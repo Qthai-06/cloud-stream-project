@@ -1,0 +1,13 @@
+# Python & Cache
+.venv/
+__pycache__/
+*.pyc
+
+# Docker & Database Volumes
+volumes/
+*.db
+*.log
+
+# Sensitive Credentials
+.env
+.env.local

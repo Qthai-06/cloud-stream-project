@@ -1,0 +1,83 @@
+services:
+  # ==========================================
+  # 1. MESSAGE BROKER: REDPANDA (KAFKA-COMPATIBLE)
+  # ==========================================
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    container_name: redpanda
+    command:
+      - redpanda start
+      - --smp 1
+      - --memory 1G
+      - --reserve-memory 0M
+      - --overprovisioned
+      - --node-id 0
+      - --check=false
+      - --kafka-addr PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
+      - --advertise-kafka-addr PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
+      - --pandaproxy-addr 0.0.0.0:8082
+      - --advertise-pandaproxy-addr localhost:8082
+    ports:
+      - "9092:9092"
+      - "8082:8082"
+    volumes:
+      - ./volumes/redpanda:/var/lib/redpanda/data
+    networks:
+      - stream-network
+
+  # Web UI quản lý Redpanda
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:latest
+    container_name: redpanda-console
+    ports:
+      - "8080:8080"
+    environment:
+      - KAFKA_BROKERS=redpanda:29092
+    depends_on:
+      - redpanda
+    networks:
+      - stream-network
+
+  # ==========================================
+  # 2. RDBMS: POSTGRESQL (OLTP)
+  # ==========================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: adminpassword
+      POSTGRES_DB: app_db
+    volumes:
+      - ./volumes/postgres:/var/lib/postgresql/data
+    networks:
+      - stream-network
+
+  # ==========================================
+  # 3. ANALYTICS DATABASE: CLICKHOUSE (OLAP)
+  # ==========================================
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      CLICKHOUSE_DB: analytics_db
+      CLICKHOUSE_USER: clickhouse_admin
+      CLICKHOUSE_PASSWORD: adminpassword
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - ./volumes/clickhouse:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    networks:
+      - stream-network
+
+networks:
+  stream-network:
+    driver: bridge
