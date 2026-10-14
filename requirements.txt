@@ -1,0 +1,15 @@
+# Streaming Engine 
+pyspark==3.5.1
+
+# Kafka Producer & Ingestion
+kafka-python==2.0.2
+
+# Database Drivers 
+psycopg2-binary==2.9.9 
+clickhouse-driver==0.2.7
+
+# Metrics & Utilities 
+pyyaml==6.0.1 
+prometheus-client==0.20.0 
+numpy==1.26.4 
+pandas==2.2.2

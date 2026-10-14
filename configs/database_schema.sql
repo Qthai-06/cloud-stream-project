@@ -1,0 +1,1 @@
+-- Database schema placeholder. Definitions will be added in later steps.
