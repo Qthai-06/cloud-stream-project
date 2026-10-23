@@ -1,4 +1,4 @@
-# Tuần 1
+# Tuần 1 - 2
 
 ### BƯỚC 1: LỰA CHỌN ENGINE – NÊN CHỌN SPARK HAY FLINK?
 
@@ -181,3 +181,166 @@ if __name__ == "__main__":
    ```
 *(Ở lần chạy đầu tiên, Spark sẽ mất khoảng 30–60 giây để tải thư viện Maven `spark-sql-kafka-0-10_2.12`. Khi màn hình hiện thông báo kết nối thành công, bạn đã hoàn tất toàn bộ môi trường).*
 
+# Tuần 3: Xây dựng Event Data Generator & Giả lập Dữ liệu Trễ (Late Data)
+### BƯỚC 1: XÂY DỰNG EVENT GENERATOR
+
+* **File mã nguồn:** `src/generator/event_producer.py`
+* **File cấu hình:** `configs/pipeline_config.yaml`
+* **Nghiệp vụ giả lập:** Tạo luồng dữ liệu cảm biến nhiệt độ và độ ẩm IoT bao gồm các trường: `device_id`, `event_time`, `temperature`, `humidity`, `status`.
+
+### BƯỚC 2: CÀI ĐẶT CƠ CHẾ GIẢ LẬP DỮ LIỆU ĐẾN MUỘN (LATE DATA)
+
+* **Tỉ lệ trễ:** Khởi tạo thuật toán ngẫu nhiên đảm bảo **20%** tổng số sự kiện phát sinh bị trễ timestamp (`event_time`).
+* **Độ trễ:** Lùi `event_time` của các sự kiện này từ **30 đến 120 giây** so với thời gian phát thực tế (Processing Time).
+* **Partition Key:** Sử dụng `device_id` làm Partition Key để đảm bảo dữ liệu của từng cảm biến giữ đúng thứ tự trên Kafka Partition.
+
+### BƯỚC 3: THỰC NGHIỆM KẾT NỐI VÀ KIỂM TRA
+
+* **Kafka Topic:** `iot-sensor-events` (Sử dụng Redpanda tại `localhost:9092`).
+* **Tốc độ phát:** Cấu hình linh hoạt (mặc định: **10 msg/sec**).
+* **Kiểm chứng:**
+* Xác nhận luồng dữ liệu được đẩy thành công thông qua **Redpanda Console UI** (`http://localhost:8080`).
+* Kiểm tra các gói tin JSON để đảm bảo có đầy đủ thông tin timestamp và cờ đánh dấu `is_late_simulated`.
+
+Quy trình ngắn gọn cần nhớ khởi động docker:
+
+```powershell
+docker info
+cd "đường dẫn của dự án ví dụ: D:\UTH\Dien_Toan_Dam_May\cloud-stream-project"
+docker compose up -d
+docker compose ps
+Test-NetConnection localhost -Port 9092
+
+Dữ liệu sinh ra từ `event_producer.py` **không được lưu trực tiếp thành file trong thư mục project**. Nó được gửi vào Kafka-compatible broker là **Redpanda**, trong topic:
+
+```yaml
+iot-sensor-events
+```
+
+Cấu hình nằm trong `pipeline_config.yaml`.
+
+## Xem dữ liệu bằng Redpanda Console
+
+Mở trình duyệt:
+
+```text
+http://localhost:8080
+```
+
+Sau đó:
+
+1. Chọn topic `iot-sensor-events`.
+2. Chọn phần **Messages**.
+3. Chọn partition.
+4. Bấm **Consume** hoặc **Refresh**.
+5. Xem các message JSON được producer gửi lên.
+
+Dữ liệu sẽ có dạng tương tự:
+
+```json
+{
+  "device_id": "sensor-A101",
+  "event_time": "23/10/2026 16:20:00",
+  "temperature": 35.42,
+  "humidity": 68.15,
+  "status": "OK",
+  "is_late_simulated": false
+}
+```
+
+## Xem bằng command line
+
+Liệt kê topic:
+
+```powershell
+docker exec redpanda rpk topic list
+```
+
+Xem thông tin topic:
+
+```powershell
+docker exec redpanda rpk topic describe iot-sensor-events
+```
+
+Đọc message mới:
+
+```powershell
+docker exec -it redpanda rpk topic consume iot-sensor-events
+```
+
+Lệnh này sẽ chờ và hiển thị các message mới được gửi vào topic.
+
+Muốn đọc lại các message đã có từ đầu topic:
+
+```powershell
+docker exec -it redpanda rpk topic consume iot-sensor-events --offset start
+```
+
+Dừng lệnh xem dữ liệu bằng:
+
+```text
+Ctrl + C
+```
+
+## Dữ liệu vật lý nằm ở đâu?
+
+Trong `docker-compose.yml`, Redpanda có volume:
+
+```yaml
+volumes:
+  - ./volumes/redpanda:/var/lib/redpanda/data
+```
+
+Vì vậy dữ liệu Kafka/Redpanda được lưu vật lý trong thư mục:
+
+```text
+D:\UTH\Dien_Toan_Dam_May\cloud-stream-project\volumes\redpanda
+```
+
+Tuy nhiên, **không nên mở trực tiếp các file bên trong thư mục này**, vì đó là dữ liệu nội bộ của Redpanda. Muốn xem dữ liệu, nên dùng:
+
+- Redpanda Console tại `http://localhost:8080`
+- Lệnh `rpk topic consume`
+- Consumer Python/Spark ở các bước sau
+
+## Luồng dữ liệu hiện tại
+
+```text
+event_producer.py
+        |
+        | gửi JSON qua localhost:9092
+        v
+Redpanda
+        |
+        | topic: iot-sensor-events
+        v
+Redpanda Console / Spark Streaming / Consumer
+```
+
+## Quy trình kiểm tra đầy đủ
+
+Terminal 1: khởi động Redpanda:
+
+```powershell
+docker compose up -d redpanda
+```
+
+Terminal 2: chạy producer:
+
+```powershell
+.\.venv\Scripts\python.exe .\src\generator\event_producer.py
+```
+
+Terminal 3: xem dữ liệu:
+
+```powershell
+docker exec -it redpanda rpk topic consume iot-sensor-events
+```
+
+Hoặc mở trình duyệt:
+
+```text
+http://localhost:8080
+```
+
+Lưu ý: Kafka lưu message theo retention policy. Dữ liệu không phải là file xuất ra vĩnh viễn; về sau Spark Streaming sẽ đọc dữ liệu từ topic rồi ghi kết quả sang database, file hoặc hệ thống lưu trữ khác.
