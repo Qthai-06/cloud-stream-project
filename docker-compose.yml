@@ -2,6 +2,8 @@ services:
   # ==========================================
   # 1. MESSAGE BROKER: REDPANDA (KAFKA-COMPATIBLE)
   # ==========================================
+  # Xóa bỏ ngay service postgres thừa thãi, bổ sung các giới hạn tài nguyên
+  # Nhúng data-generator vào cắm cadvisor vào mạng stream-network để có thể giám sát các container khác
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:latest
     container_name: redpanda
@@ -14,23 +16,30 @@ services:
       - --node-id 0
       - --check=false
       - --kafka-addr PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
-      - --advertise-kafka-addr PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
+      # Đổi cổng OUTSIDE ở đây thành 19092 để tránh xung đột với cổng 9092 của host
+      - --advertise-kafka-addr PLAINTEXT://redpanda:29092,OUTSIDE://localhost:19092
       - --pandaproxy-addr 0.0.0.0:8082
       - --advertise-pandaproxy-addr localhost:8082
     ports:
-      - "9092:9092"
+    # Ánh xạ cổng 19092 trên máy tính vào cổng 9092 của container
+      - "19092:9092"
       - "8082:8082"
     volumes:
       - ./volumes/redpanda:/var/lib/redpanda/data
     networks:
       - stream-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1.5G
 
   # Web UI quản lý Redpanda
   redpanda-console:
     image: docker.redpanda.com/redpandadata/console:latest
     container_name: redpanda-console
     ports:
-      - "8080:8080"
+      - "18080:8080" # Đã né cổng 8080 của cAdvisor
     environment:
       - KAFKA_BROKERS=redpanda:29092
     depends_on:
@@ -38,22 +47,22 @@ services:
     networks:
       - stream-network
 
-  # ==========================================
-  # 2. RDBMS: POSTGRESQL (OLTP)
-  # ==========================================
-  postgres:
-    image: postgres:16-alpine
-    container_name: postgres
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-    volumes:
-      - ./volumes/postgres:/var/lib/postgresql/data
-    networks:
-      - stream-network
+  # # ==========================================
+  # # 2. RDBMS: POSTGRESQL (OLTP)
+  # # ==========================================
+  # postgres:
+  #   image: postgres:16-alpine
+  #   container_name: postgres
+  #   ports:
+  #     - "5432:5432"
+  #   environment:
+  #     POSTGRES_USER: ${POSTGRES_USER}
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  #     POSTGRES_DB: ${POSTGRES_DB}
+  #   volumes:
+  #     - ./volumes/postgres:/var/lib/postgresql/data
+  #   networks:
+  #     - stream-network
 
   # ==========================================
   # 3. ANALYTICS DATABASE: CLICKHOUSE (OLAP)
@@ -62,8 +71,8 @@ services:
     image: clickhouse/clickhouse-server:latest
     container_name: clickhouse
     ports:
-      - "8123:8123"
-      - "9000:9000"
+      - "18123:8123" # Đã né cổng 8123
+      - "19000:9000" # Ánh xạ cổng 19000 trên máy host vào cổng 9000 nội bộ
     environment:
       CLICKHOUSE_DB: ${CLICKHOUSE_DB}
       CLICKHOUSE_USER: ${CLICKHOUSE_USER}
@@ -75,6 +84,41 @@ services:
       nofile:
         soft: 262144
         hard: 262144
+    networks:
+      - stream-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 2G
+# ==========================================
+  # 4. EVENT GENERATOR (Tích hợp nội bộ)
+  # ==========================================
+  data-generator:
+    build: 
+      context: .
+      dockerfile: Dockerfile.generator
+    container_name: event-generator
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:29092
+    depends_on:
+      - redpanda
+    networks:
+      - stream-network
+
+  # ==========================================
+  # 5. INFRA METRICS MONITORING (Giám sát phần cứng)
+  # ==========================================
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
     networks:
       - stream-network
 
