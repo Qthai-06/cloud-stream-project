@@ -122,6 +122,25 @@ services:
     networks:
       - stream-network
 
+# ==========================================
+  # 6. STREAMING ENGINE (Spark Structured Streaming)
+  # ==========================================
+  stream-processor:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    container_name: spark-processor
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:29092
+      - CLICKHOUSE_HOST=clickhouse
+    volumes:
+      - ./checkpoints:/opt/workspace/checkpoints # Ánh xạ điểm neo trạng thái
+    depends_on:
+      - redpanda
+      - clickhouse
+    networks:
+      - stream-network
+      
 networks:
   stream-network:
     driver: bridge
