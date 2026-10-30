@@ -14,4 +14,14 @@ generator:
   - "sensor-A103"
   - "sensor-A104"
   - "sensor-A105"
-  
+
+streaming:
+  window_duration: "1 minute"
+  watermark_delay: "120 seconds"
+  checkpoint_location: "checkpoints/spark_pipeline"
+
+database:
+  host: "127.0.0.1"
+  port: 15432
+  user: "admin"
+  name: "app_db"

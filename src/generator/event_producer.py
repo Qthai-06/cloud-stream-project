@@ -1,4 +1,4 @@
-"""Event producer placeholder. Implementation will be added in a later step."""
+"""Generate IoT sensor events and publish them to Redpanda."""
 import random
 import json
 import yaml
@@ -16,7 +16,6 @@ def generator_sensor_event(devices, late_per, min_delay,max_delay):
     device_id = random.choice(devices)
     now = datetime.utcnow()
 
-    # Giả lập 20% dữ liệu huấn luyện muộn
     is_late = random.random() < late_per
     if is_late:
         delay_sec = random.randint(min_delay,max_delay)
@@ -26,11 +25,11 @@ def generator_sensor_event(devices, late_per, min_delay,max_delay):
 
     event = {
         "device_id":device_id,
-        "event_time":event_time.strftime("%d/%m/%Y %H:%M:%S"),
-        "temperature": round(random.uniform(20.0,85.0),2), # cảm biến nhiệt độ
-        "humidity": round(random.uniform(30.0,90.0),2), # cảm biến độ ẩm
+        "event_time": event_time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "temperature": round(random.uniform(20.0, 85.0), 2),
+        "humidity": round(random.uniform(30.0, 90.0), 2),
         "status": "CRITICAL" if random.random() < 0.05 else "OK",
-        "is_late_simulated": is_late 
+        "is_late_simulated": is_late,
     }
     return device_id,event
 

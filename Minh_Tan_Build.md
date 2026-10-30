@@ -259,7 +259,10 @@ docker exec redpanda rpk topic list
 Xem thông tin topic:
 
 ```powershell
-docker exec redpanda rpk topic describe iot-sensor-events
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
 Đọc message mới:
@@ -344,3 +347,379 @@ http://localhost:8080
 ```
 
 Lưu ý: Kafka lưu message theo retention policy. Dữ liệu không phải là file xuất ra vĩnh viễn; về sau Spark Streaming sẽ đọc dữ liệu từ topic rồi ghi kết quả sang database, file hoặc hệ thống lưu trữ khác.
+
+# Tuần 4: Viết logic Window, thiết lập watermark và kích hoạt checkpoint. Ghi kết quả vào CSDL.
+
+Ở **Tuần 4**, cần chạy 2 file chính:
+
+1. `event_producer.py`: tạo dữ liệu cảm biến và gửi vào Redpanda/Kafka.
+2. `spark_pipeline.py`: đọc dữ liệu từ Kafka, xử lý window/watermark/checkpoint rồi ghi kết quả vào PostgreSQL.
+
+Hai file này phải chạy **đồng thời ở 2 terminal khác nhau**.
+
+## Thứ tự chạy
+
+### Terminal 1: Khởi động Docker
+
+Mở PowerShell thứ nhất:
+
+```powershell
+cd "D:\UTH\Dien_Toan_Dam_May\cloud-stream-project"
+
+docker compose up -d
+```
+
+Kiểm tra container:
+
+```powershell
+docker ps
+```
+
+Cần có ít nhất:
+
+- `redpanda`
+- `postgres`
+
+Không nên chỉ chạy Redpanda vì `spark_pipeline.py` còn ghi kết quả vào PostgreSQL.
+
+---
+
+### Terminal 2: Chạy Spark pipeline trước
+
+Mở PowerShell thứ hai:
+
+```powershell
+cd "D:\UTH\Dien_Toan_Dam_May\cloud-stream-project"
+
+.\.venv\Scripts\Activate.ps1
+```
+
+Nếu cần thiết lập Java 17 trong terminal hiện tại:
+bấm kiểm tra coi cái này có đứng đầu chưa `C:\Program Files\Java\jdk-17' `Lệnh: `where.exe java`, nếu đứng đầu trong powershell rồi thì không sử dụng lệnh phía dưới đâu.
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-17"
+$env:HADOOP_HOME = "C:\hadoop"
+$env:Path = "$env:JAVA_HOME\bin;$env:HADOOP_HOME\bin;$env:Path"
+```
+
+Kiểm tra:
+
+```powershell
+java -version
+```
+
+Phải hiện Java 17.
+
+Sau đó chạy pipeline:
+
+```powershell
+.\.venv\Scripts\python.exe .\src\streaming\spark_pipeline.py
+```
+
+Khi chạy thành công, terminal sẽ giữ trạng thái đang chạy và hiển thị tương tự:
+
+```text
+Pipeline đang chạy. Nhấn Ctrl+C để dừng.
+```
+
+Nên chạy Spark trước vì file này đang dùng:
+
+```python
+.option("startingOffsets", "latest")
+```
+
+Nó chỉ đọc các message mới được gửi sau thời điểm pipeline bắt đầu.
+
+---
+
+### Terminal 3: Chạy event producer
+
+Mở PowerShell thứ ba:
+
+```powershell
+cd "D:\UTH\Dien_Toan_Dam_May\cloud-stream-project"
+
+.\.venv\Scripts\Activate.ps1
+.\.venv\Scripts\python.exe .\src\generator\event_producer.py
+```
+
+Nếu chạy thành công, bạn sẽ thấy:
+
+```text
+Khởi tạo Kafka Producer kết nối với Redpanda...
+>>> Bắt đầu chuyền dữ liệu vào iot-sensor-events
+>>> Cấu hình: 10 msg/s | 20% Late Data
+```
+
+Sau đó producer sẽ liên tục gửi dữ liệu vào topic `iot-sensor-events`.
+
+## Sơ đồ chạy
+
+```text
+event_producer.py
+        |
+        | gửi dữ liệu JSON
+        v
+Redpanda - localhost:9092
+        |
+        | Spark đọc dữ liệu
+        v
+spark_pipeline.py
+        |
+        | window + watermark
+        v
+PostgreSQL - sensor_window_metrics
+```
+
+## Kiểm tra message Kafka
+
+Có thể mở thêm Terminal 4:
+
+```powershell
+docker exec -it redpanda rpk topic list
+```
+
+Kiểm tra topic:
+
+```powershell
+docker exec -it redpanda rpk topic describe iot-sensor-events
+```
+
+Xem message:
+
+```powershell
+docker exec -it redpanda rpk topic consume iot-sensor-events
+```
+
+Dừng consumer bằng:
+
+```text
+Ctrl + C
+```
+
+## Kiểm tra kết quả trong PostgreSQL
+
+Kết nối vào PostgreSQL:
+
+```powershell
+docker exec -it postgres psql -U admin -d app_db
+```
+
+Trong PostgreSQL, chạy:
+
+```sql
+SELECT *
+FROM sensor_window_metrics
+ORDER BY updated_at DESC
+LIMIT 20;
+```
+
+
+## Lưu ý về thời gian xử lý
+
+Trong `pipeline_config.yaml` hiện tại:
+
+```yaml
+window_duration: "1 minute"
+watermark_delay: "120 seconds"
+```
+
+Vì watermark là 120 giây, kết quả có thể chưa ghi ngay lập tức. Hãy để:
+
+- Spark chạy trước
+- Producer chạy liên tục
+- chờ khoảng 2–3 phút
+- sau đó kiểm tra PostgreSQL trong vscode
+
+## Cách dừng
+
+Dừng producer:
+
+```text
+Ctrl + C
+```
+
+Dừng Spark:
+
+```text
+Ctrl + C
+```
+
+Dừng Docker sau khi kiểm tra xong:
+
+```powershell
+docker compose down
+```
+
+Lưu ý: Tuần 4 chạy cả `spark_pipeline.py` và `event_producer.py`, nhưng cần chạy Spark trước rồi mới chạy producer, mỗi file trong một terminal riêng.
+
+---
+
+# Tuần 5: Tinh chỉnh Watermark và định tuyến Late Data
+
+### ĐANG THỰC HIỆN GÌ?
+
+Tạo job độc lập `src/streaming/late_data_router.py` để đọc sự kiện từ Kafka topic `iot-sensor-events`. Job dùng watermark `120 seconds` từ `configs/pipeline_config.yaml`; mỗi micro-batch sẽ chủ động so sánh `event_time` với mốc watermark hiện tại. Sự kiện quá cũ không bị bỏ qua im lặng mà được định tuyến vào file JSONL để đối chiếu.
+
+Các file cũ không bị thay đổi. Kết quả của Tuần 4 vẫn được giữ nguyên; job Tuần 5 dùng checkpoint riêng để không xung đột với pipeline cũ.
+
+### ĐẦU VÀO
+
+* **Kafka broker:** `localhost:9092`
+* **Kafka topic:** `iot-sensor-events`
+* **Dữ liệu đầu vào:** JSON gồm `device_id`, `event_time`, `temperature`, `humidity`, `status` và `is_late_simulated`.
+* **Watermark:** giá trị `streaming.watermark_delay`, mặc định `120 seconds`.
+
+### KẾT QUẢ ĐẦU RA
+
+* **File bằng chứng late data:** `logs/late_data.jsonl`
+* **Checkpoint riêng:** `checkpoints/late_data_router/`
+* Mỗi dòng trong `late_data.jsonl` gồm `detected_at`, `batch_id`, `watermark_cutoff`, lý do lọc và toàn bộ event bị định tuyến.
+
+Ví dụ một dòng log:
+
+```json
+{"batch_id": 4, "watermark_delay_seconds": 120, "reason": "event_time_older_than_watermark", "event": {"device_id": "sensor-A101", "is_late_simulated": true}}
+```
+
+File chỉ xuất hiện khi có sự kiện quá trễ. Nếu chưa có file, hãy để producer chạy đủ lâu hoặc phát một sự kiện có `event_time` cũ hơn 120 giây.
+
+### CÁCH CHẠY
+
+1. Khởi động Docker và Redpanda:
+
+   ```cmd
+   cd /d D:\UTH\Dien_Toan_Dam_May\cloud-stream-project
+   docker compose up -d redpanda
+   ```
+
+2. Terminal 1 - chạy late-data router:
+
+   ```cmd
+   .\.venv\Scripts\python.exe .\src\streaming\late_data_router.py
+   ```
+
+3. Terminal 2 - chạy producer:
+
+   ```cmd
+   .\.venv\Scripts\python.exe .\src\generator\event_producer.py
+   ```
+
+   Để nhìn thấy log nhanh trong lúc kiểm thử, có thể chạy router với watermark ngắn hơn mức trễ của producer:
+
+   ```cmd
+   .\.venv\Scripts\python.exe .\src\streaming\late_data_router.py --watermark-delay "30 seconds"
+   ```
+
+   Khi chạy thực nghiệm chính thức, bỏ tùy chọn này để dùng `120 seconds` trong cấu hình.
+
+4. Kiểm tra file log khi router đã chạy vài phút:
+
+   ```cmd
+   type logs\late_data.jsonl
+   ```
+
+   Hoặc trong PowerShell:
+
+   ```powershell
+   Get-Content .\logs\late_data.jsonl
+   ```
+
+5. Kiểm tra checkpoint:
+
+   ```cmd
+   dir checkpoints\late_data_router
+   ```
+
+Không xóa `checkpoints\late_data_router` khi muốn job tiếp tục từ offset cũ. Nếu xóa checkpoint để chạy lại từ đầu, hãy đổi tên hoặc xóa riêng `logs\late_data.jsonl` trước để tránh nhầm kết quả của các lần chạy.
+
+# Tuần 5: KIỂM TRA TÍNH TOÀN VẸN VÀ KHÔNG NHÂN ĐÔI SAU KHI RESTART
+
+#### ĐANG THỰC HIỆN GÌ?
+
+Bổ sung bộ truy vấn `tests/sql/verify_stream_integrity.sql` để kiểm tra dữ liệu do Spark ghi vào bảng `sensor_window_metrics`. Bộ kiểm tra xác nhận khóa logic của mỗi kết quả (`window_start`, `window_end`, `device_id`) không bị nhân đôi, các cột bắt buộc không bị `NULL`, biên cửa sổ hợp lệ và kết quả có checksum để đối chiếu trước/sau khi khởi động lại.
+
+Pipeline Tuần 4 dùng khóa chính trên ba cột logic và `ON CONFLICT DO UPDATE`. Vì vậy khi Spark chạy lại cùng micro-batch, sink cập nhật đúng dòng cũ thay vì thêm dòng mới. Phải giữ nguyên checkpoint khi restart; xóa checkpoint sẽ làm bài kiểm tra semantics không còn ý nghĩa vì pipeline có thể đọc lại dữ liệu từ đầu.
+
+#### ĐẦU VÀO
+
+* **Bảng kiểm tra:** `sensor_window_metrics` trong PostgreSQL.
+* **Truy vấn:** `tests/sql/verify_stream_integrity.sql`.
+* **Checkpoint cần giữ nguyên:** `checkpoints/spark_pipeline/`.
+
+#### KẾT QUẢ CẦN ĐẠT
+
+* Các kiểm tra trạng thái phải trả về `PASS`.
+* Hai truy vấn phát hiện duplicate phải trả về **0 dòng**.
+* `row_count` và `result_checksum` phải giống nhau trước và sau khi restart nếu không có event mới trong thời gian kiểm tra.
+
+Đây là bằng chứng đầu ra **idempotent và at-least-once an toàn ở sink**: nếu một batch được gửi lại, PostgreSQL không tạo thêm dòng logic. Không kết luận exactly-once end-to-end chỉ từ bảng này; exactly-once tuyệt đối còn phụ thuộc source, checkpoint và việc không xóa checkpoint.
+
+#### CÁCH CHẠY
+
+1. Đảm bảo PostgreSQL và pipeline đã chạy:
+
+   ```cmd
+   cd /d D:\UTH\Dien_Toan_Dam_May\cloud-stream-project
+   docker compose up -d postgres redpanda
+   ```
+
+2. Chạy bộ kiểm tra lần đầu và lưu lại `row_count`, `result_checksum`. Trong PowerShell, không dùng toán tử `<` vì đó không phải cú pháp chuyển hướng file hợp lệ của PowerShell. Dùng script kiểm tra trực tiếp:
+
+   ```powershell
+   .\.venv\Scripts\python.exe .\tests\sql\run_integrity_check.py `
+     --host 127.0.0.1 `
+     --port 15432 `
+     --user admin `
+     --database app_db `
+     --password "29012006TanLee!"
+   ```
+
+   Nếu chạy trong CMD, có thể dùng file SQL:
+
+   ```cmd
+   docker exec -i postgres psql -U admin -d app_db < tests\sql\verify_stream_integrity.sql
+   ```
+
+3. Dừng Spark bằng `Ctrl+C`, nhưng **không xóa** `checkpoints\spark_pipeline`.
+
+4. Khởi động lại đúng pipeline với checkpoint cũ:
+
+   ```cmd
+   .\.venv\Scripts\python.exe .\src\streaming\spark_pipeline.py
+   ```
+
+5. Khi pipeline đã khởi động xong, dừng producer để không phát sinh event mới, rồi chạy lại:
+
+   ```powershell
+   .\.venv\Scripts\python.exe .\tests\sql\run_integrity_check.py --user admin --database app_db
+   ```
+
+6. Đối chiếu hai lần chạy:
+
+   * Duplicate query không trả về dòng nào.
+   * `row_count` không tăng chỉ vì restart.
+   * `result_checksum` giữ nguyên nếu không có input mới.
+
+Nếu cần kiểm tra riêng các dòng trùng bằng PowerShell:
+
+```powershell
+docker exec -it postgres psql -U admin -d app_db -c "SELECT window_start, window_end, device_id, COUNT(*) FROM sensor_window_metrics GROUP BY window_start, window_end, device_id HAVING COUNT(*) > 1;"
+```
+
+Kết quả mong đợi là không có dòng nào.
+
+Nếu muốn chạy file SQL trong PowerShell thay vì script Python, dùng pipe:
+
+```powershell
+Get-Content .\tests\sql\verify_stream_integrity.sql |
+    docker exec -i postgres psql -U admin -d app_db
+```
+
+Trong PowerShell, không viết:
+
+```powershell
+docker exec -i postgres psql -U admin -d app_db < tests\sql\verify_stream_integrity.sql
+```
+
+vì toán tử `<` gây lỗi `RedirectionNotSupported`.
