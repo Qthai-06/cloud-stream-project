@@ -1,0 +1,33 @@
+# Sử dụng base image Python tối giản để đồng nhất với hệ sinh thái
+FROM python:3.10-slim
+WORKDIR /app
+
+# 1. CÀI ĐẶT MÔI TRƯỜNG THỰC THI CHO SPARK (BẮT BUỘC)
+# Cài đặt OpenJRE vì lõi của Apache Spark được viết bằng Scala/Java, 
+# thư viện pyspark chỉ là lớp vỏ bọc giao tiếp (wrapper).
+RUN apt-get update && \
+    apt-get install -y default-jre-headless && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Thiết lập biến môi trường để PySpark tìm thấy Java
+ENV JAVA_HOME=/usr/lib/jvm/default-java
+
+# 2. CÀI ĐẶT THƯ VIỆN NGHIỆP VỤ
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 3. SAO CHÉP MÃ NGUỒN VÀ CẤU HÌNH
+COPY src/ /app/src/
+COPY configs/ /app/configs/
+
+# 4. CHUẨN BỊ ĐIỂM NEO CHECKPOINT
+# Tạo sẵn thư mục rỗng bên trong container để docker-compose ánh xạ (mount) ổ cứng vào
+RUN mkdir -p /opt/workspace/checkpoints
+
+ENV PYTHONPATH=/app
+
+# 5. LỆNH KHỞI CHẠY (ENTRYPOINT)
+# Tạm thời trỏ vào file smoke_test để nghiệm thu kết nối hệ thống.
+# Sau khi Tân Lê code xong, anh chỉ việc đổi thành "src/streaming/spark_pipeline.py"
+CMD ["python", "src/streaming/smoke_test.py"]

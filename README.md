@@ -1,13 +1,270 @@
-Set-Content -Path README.md -Value @"
-# Đề tài 16: Hệ thống Xử lý Luồng Thời gian Thực
+# Đề tài 16 — Hệ thống xử lý luồng thời gian thực
 
-## Khởi động Hạ tầng
-1. Sao chép biến môi trường: \`cp .env.example .env\`
-2. Khởi chạy toàn bộ dịch vụ: \`docker compose up -d\`
+Kho mã nguồn này xây dựng một pipeline xử lý sự kiện IoT (nhiệt độ và độ ẩm)
+để **đo lường độ trễ đầu cuối, độ chính xác khi có dữ liệu đến muộn và hành vi
+backpressure**. Đây không phải ứng dụng tối ưu cho trường hợp bình thường:
+hạ tầng bị giới hạn tài nguyên có chủ đích để tạo ra tải và sự cố có thể quan
+sát, lặp lại.
 
-## Cổng kết nối Dịch vụ (Ports)
-- **Redpanda (Kafka API):** \`localhost:9092\`
-- **Redpanda Console UI:** \`http://localhost:8080\`
-- **PostgreSQL:** \`localhost:5432\`
-- **ClickHouse HTTP / Native:** \`localhost:8123\` / \`localhost:9000\`
-"@
+## Câu hỏi nghiên cứu
+
+Window, watermark, checkpoint và cơ chế giao nhận thông điệp ảnh hưởng thế nào
+đến độ trễ và độ chính xác của kết quả khi dữ liệu đến muộn?
+
+Kết luận phải được chứng minh bằng số liệu và biểu đồ, tối thiểu gồm:
+
+- throughput và consumer lag;
+- độ trễ từ `event_time` đến khi ghi vào ClickHouse;
+- tỷ lệ dữ liệu được gán đúng window, dữ liệu bị loại và dữ liệu được xử lý lại;
+- thời gian và trạng thái khôi phục từ checkpoint;
+- mức sử dụng CPU, RAM và I/O của các container.
+
+## Data flow
+
+```text
+Event Generator (10 msg/s)
+        |
+        | Kafka protocol, key = device_id
+        v
+Redpanda / topic: iot-sensor-events
+        |
+        | Spark Structured Streaming (đang hoàn thiện)
+        | window + watermark + checkpoint
+        v
+ClickHouse (OLAP)
+        |
+        +--> Prometheus/Grafana (throughput, lag, checkpoint, latency)
+        +--> cAdvisor (CPU, RAM, I/O container)
+```
+
+Generator chạy trong mạng Docker `stream-network`, vì vậy kết nối đến broker
+dùng `redpanda:29092`. Máy host kết nối đến Kafka API bằng
+`localhost:19092`.
+
+### Hành vi của generator
+
+Thiết lập mặc định trong
+[`configs/pipeline_config.yaml`](./configs/pipeline_config.yaml):
+
+- tốc độ: `10 msg/s`;
+- tỷ lệ late data mục tiêu: `20%`;
+- độ trễ timestamp của late data: ngẫu nhiên `30–120 giây`;
+- thiết bị: `sensor-A101` đến `sensor-A105`;
+- topic: `iot-sensor-events`.
+
+`event_time` của late data bị lùi so với thời gian phát. Trường
+`is_late_simulated` chỉ là nhãn phục vụ đối chiếu; pipeline phải xác định dữ
+liệu muộn bằng watermark, không được dựa vào nhãn này.
+
+## Thành phần hạ tầng
+
+| Thành phần | Vai trò | Giới hạn / trạng thái |
+|---|---|---|
+| Redpanda | Message broker tương thích Kafka | 1 CPU, giới hạn RAM `1.5G`; Redpanda tự giới hạn bộ nhớ khả dụng ở `1G` |
+| Redpanda Console | Quan sát topic, partition và consumer | Đã có trong Compose |
+| ClickHouse | Kho OLAP nhận kết quả streaming | 1.5 CPU, giới hạn RAM `2G` |
+| Event Generator | Phát sự kiện IoT liên tục | 10 msg/s, chạy nội bộ Docker |
+| cAdvisor | Đo CPU, RAM, filesystem và network của container | Đã có trong Compose |
+| Spark Structured Streaming | Window, watermark, checkpoint và sink | Đang triển khai; chưa có service riêng trong Compose hiện tại |
+| Prometheus/Grafana | Lưu và trực quan hóa metrics | Hạng mục tích hợp tiếp theo; chưa có service trong Compose hiện tại |
+
+PostgreSQL hiện được giữ lại trong thư mục volume cũ nhưng đã tắt trong
+`docker-compose.yml`; pipeline hiện hướng đến ClickHouse cho dữ liệu phân tích.
+
+## Yêu cầu tiên quyết
+
+- Docker Engine có hỗ trợ Docker Compose v2 (`docker compose version`);
+- Git;
+- tối thiểu **6 GB RAM khả dụng** cho Docker Desktop/VM. Khuyến nghị 8 GB
+  hoặc hơn để còn chỗ cho hệ điều hành và công cụ quan sát;
+- tối thiểu 2 CPU logic. Khi chạy stress test nên dùng 4 CPU nếu máy cho phép;
+- không có dịch vụ khác chiếm các cổng được liệt kê bên dưới;
+- trên Docker Desktop, bật chia sẻ thư mục chứa repository.
+
+Các giới hạn `deploy.resources` trong Compose được dùng để tạo điểm nghẽn;
+chúng không thay thế việc cấp đủ RAM cho Docker VM.
+
+## Khởi chạy
+
+### 1. Kiểm tra cấu hình
+
+Các biến `CLICKHOUSE_DB`, `CLICKHOUSE_USER` và `CLICKHOUSE_PASSWORD` được
+Compose đọc từ file `.env`. Không đưa mật khẩu thật vào Git. Nếu repository
+chưa có `.env`, tạo file cục bộ với các giá trị phù hợp trước khi khởi chạy.
+
+Kiểm tra file Compose:
+
+```powershell
+docker compose config
+```
+
+### 2. Dọn môi trường cũ và khởi chạy
+
+Lệnh chuẩn để loại bỏ container mồ côi và dựng lại generator:
+
+```powershell
+docker compose down --remove-orphans
+docker compose up -d --build
+```
+
+`down` không xóa các volume bind mount trong `volumes/`. Dữ liệu Redpanda và
+ClickHouse vì thế vẫn tồn tại giữa các lần khởi động. Chỉ xóa dữ liệu thí
+nghiệm sau khi đã lưu kết quả và xác nhận không cần khôi phục.
+
+### 3. Kiểm tra trạng thái
+
+```powershell
+docker compose ps
+docker compose logs -f data-generator
+```
+
+Generator phải hiện tỷ lệ late data thực tế gần 20% theo thời gian đủ dài.
+Sai khác ngắn hạn là bình thường vì việc chọn late data dùng xác suất ngẫu
+nhiên.
+
+## Sơ đồ cổng dịch vụ
+
+| Dịch vụ | Host | Container | Giao thức / mục đích |
+|---|---:|---:|---|
+| Redpanda Kafka API | `19092` | `9092` | Kafka client từ máy host |
+| Redpanda Console | `18080` | `8080` | Web UI: `http://localhost:18080` |
+| ClickHouse HTTP | `18123` | `8123` | SQL/HTTP client |
+| ClickHouse native | `19000` | `9000` | `clickhouse-driver` |
+| cAdvisor | `8080` | `8080` | Metrics/UI: `http://localhost:8080` |
+| Redpanda Pandaproxy | `8082` | `8082` | HTTP proxy, nếu cần |
+
+Từ một container trên `stream-network`, dùng địa chỉ nội bộ:
+
+```text
+redpanda:29092
+clickhouse:8123
+clickhouse:9000
+```
+
+Không dùng `localhost:19092` từ generator hoặc Spark chạy trong Docker; trong
+container, `localhost` trỏ về chính container đó.
+
+## Cấu trúc repository
+
+```text
+.
+├── benchmarks/                 # Kịch bản benchmark partition và watermark
+├── configs/
+│   ├── database_schema.sql     # Schema đích (đang hoàn thiện)
+│   └── pipeline_config.yaml    # Broker, topic và generator
+├── src/
+│   ├── generator/              # Kafka producer và mô phỏng late data
+│   ├── streaming/              # Spark pipeline và metrics listener
+│   ├── batch/                  # Đánh giá kết quả sau thí nghiệm
+│   └── utils/                  # Nạp cấu hình, kết nối CSDL
+├── tests/                      # Smoke test và kiểm thử hồi quy
+├── volumes/                    # Bind mount dữ liệu local của dịch vụ
+├── Dockerfile.generator
+├── docker-compose.yml
+└── requirements.txt
+```
+
+Các module Spark, metrics, database và benchmark hiện còn là khung ban đầu.
+README mô tả đích thiết kế; không coi các placeholder này là bằng chứng rằng
+chức năng đã hoàn tất.
+
+## Kịch bản thực nghiệm
+
+Mỗi lần chạy phải ghi lại commit, cấu hình generator, số partition, watermark,
+kích thước window, thời điểm bắt đầu/kết thúc và trạng thái các container.
+
+### Baseline
+
+1. Khởi chạy Compose với tốc độ mặc định `10 msg/s`.
+2. Để hệ thống ổn định trong một khoảng thời gian cố định.
+3. Ghi throughput, consumer lag, latency, CPU/RAM và số bản ghi vào
+   ClickHouse.
+4. Lưu metrics thô cùng thời điểm đo; không chỉ lưu ảnh dashboard.
+
+### Late data và watermark
+
+Chạy cùng một tập cấu hình với 20% timestamp trễ 30–120 giây, sau đó so sánh
+nhiều watermark. Đối chiếu ba nhóm:
+
+- bản ghi đến trước watermark và được tính đúng window;
+- bản ghi đến sau watermark, được đưa vào nhánh late-data/log riêng;
+- bản ghi bị xử lý lại sau restart.
+
+Mọi bản ghi bị loại phải có lý do, timestamp và định danh sự kiện để truy vết.
+Không được dùng một giá trị watermark quá nhỏ chỉ để làm đẹp throughput.
+
+### Stress test và backpressure
+
+Tăng tốc độ generator hoặc số partition theo từng nấc, giữ nguyên thời lượng
+đo ở mỗi nấc. Điểm backpressure được xác định khi tốc độ phát vượt khả năng
+tiêu thụ: consumer lag tăng liên tục, throughput không còn tăng tương ứng và
+latency tăng. Đồng thời quan sát giới hạn RAM `1.5G` của Redpanda, `2G` của
+ClickHouse và tài nguyên do cAdvisor báo cáo.
+
+Không kết luận “hệ thống chịu tải” chỉ từ việc container còn sống. Kết luận
+phải đi kèm đường biểu diễn input rate, processed rate, lag và latency.
+
+### Partition và khôi phục
+
+1. Tăng số partition của topic, đo lại throughput và lag.
+2. Dừng có chủ đích tiến trình Spark hoặc container ClickHouse.
+3. Khởi động lại từ checkpoint gần nhất.
+4. So sánh số lượng và định danh bản ghi trước/sau khôi phục để kiểm tra
+   duplicate.
+5. Mô phỏng mất mạng nội bộ hoặc DB unavailable, ghi nhận thời gian phát hiện,
+   thời gian phục hồi và số bản ghi bị ảnh hưởng.
+
+Checkpoint phải nằm trên volume bền vững, tách khỏi image/container. Trước khi
+chạy thí nghiệm kill/restart, cần hoàn thiện volume mount checkpoint trong
+Compose và xác nhận quyền ghi của user chạy Spark.
+
+## Quan sát và số liệu
+
+Mục tiêu tích hợp:
+
+- cAdvisor: CPU, memory working set, network I/O, filesystem I/O;
+- Prometheus: scrape metrics của Spark, generator, Redpanda và ClickHouse;
+- Grafana: dashboard throughput, input/processed rate, consumer lag,
+  checkpoint duration/status, watermark, late-data count và end-to-end latency.
+
+Mỗi dashboard phải có khoảng thời gian, đơn vị và nguồn dữ liệu rõ ràng.
+Metrics cần được lưu cùng dữ liệu thô để có thể tái lập biểu đồ sau sự cố.
+
+## Phân công và ranh giới trách nhiệm
+
+| Thành viên | Phạm vi chính | KPI lõi | Rủi ro cần quản trị |
+|---|---|---|---|
+| Thái (Leader) | Kiến trúc, Docker/IaC, broker, DB, volume checkpoint | Hạ tầng dựng lại được và không lộ secret | Cạn tài nguyên, mất volume, rò rỉ mật khẩu |
+| Tân Lê | Generator, schema sự kiện, Spark window/watermark/checkpoint | 20% late data tái lập được; không vứt dữ liệu im lặng | Watermark sai, parse timestamp sai |
+| Tân Lưu | Prometheus/Grafana, benchmark, kill/recovery, phân tích | Có số liệu thô và biểu đồ cho từng kịch bản | Thiếu bằng chứng khi hệ thống sập |
+
+## Tiêu chí hoàn thành
+
+- Có baseline và stress test chạy lại được từ một commit cụ thể.
+- Có biểu đồ đối chiếu trước/sau khi đổi watermark và partition.
+- Xác định được thời điểm consumer lag và backpressure tăng cao.
+- Có bằng chứng checkpoint phục hồi được pipeline.
+- Có truy vấn kiểm tra duplicate và tính toàn vẹn dữ liệu.
+- Có log riêng cho late data bị định tuyến sau watermark.
+- Có hướng dẫn phục hồi khi broker, DB hoặc mạng nội bộ không khả dụng.
+- Dọn tài nguyên sau thí nghiệm và đóng version tag cuối cùng trên Git.
+
+## Dọn dẹp
+
+Dừng stack nhưng giữ dữ liệu volume:
+
+```powershell
+docker compose down --remove-orphans
+```
+
+Chỉ sau khi đã xuất metrics, log, kết quả ClickHouse và checkpoint cần thiết,
+mới xóa dữ liệu thí nghiệm trong các thư mục bind mount. Không commit dữ liệu
+runtime trong `volumes/` hoặc bất kỳ secret nào vào repository.
+
+## Trạng thái hiện tại
+
+Compose đã có Redpanda, Redpanda Console, ClickHouse, event generator và
+cAdvisor với các giới hạn tài nguyên phục vụ thí nghiệm. Spark Structured
+Streaming, checkpoint bền vững, Prometheus/Grafana, sink hoàn chỉnh và các
+benchmark vẫn là các hạng mục cần triển khai tiếp theo theo kế hoạch nghiên
+cứu.

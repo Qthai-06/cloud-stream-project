@@ -3,6 +3,7 @@ import random
 import json
 import yaml
 import time
+import os
 from datetime import datetime, timedelta
 from kafka import KafkaProducer
 
@@ -39,12 +40,22 @@ def main():
     kafka_config = config["kafka"]
     gen_config = config["generator"]
     
-    print("Khởi tạo Kafka Producer kết nối với Redpanda...")
+    # Ưu tiên lấy biến môi trường từ Docker, nếu không có thì dùng file YAML
+    # Lấy địa chỉ từ biến môi trường của Docker, nếu không có thì fallback về file YAML
+    bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", kafka_config["bootstrap_servers"])
+    
+    print(f"Khởi tạo Kafka Producer kết nối với {bootstrap_servers}...")
+    producer = KafkaProducer(
+        bootstrap_servers=bootstrap_servers,
+        key_serializer=lambda k: k.encode("utf-8"),
+        value_serializer= lambda v: json.dumps(v).encode("utf-8")
+    )
+    """print("Khởi tạo Kafka Producer kết nối với Redpanda...")
     producer = KafkaProducer(
         bootstrap_servers=kafka_config["bootstrap_servers"],
         key_serializer=lambda k: k.encode("utf-8"),
         value_serializer= lambda v: json.dumps(v).encode("utf-8")
-        )
+        )"""
 
     topic = kafka_config["topic_name"]
     rate_sleep = 1.0/gen_config["rate_per_sec"]
