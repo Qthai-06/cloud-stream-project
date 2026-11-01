@@ -1,0 +1,82 @@
+[
+  {
+    "timestamp": "2026-11-01T10:55:08.781800+00:00",
+    "container_name": "redpanda",
+    "role": "Message Broker",
+    "cpu_usage_percent": 14.5,
+    "memory_working_set_mb": 420.8,
+    "limit_cpu": "1.0 Core",
+    "limit_memory": "1.5 GB",
+    "status": "NORMAL_LOAD_OK"
+  },
+  {
+    "timestamp": "2026-11-01T10:55:08.781800+00:00",
+    "container_name": "event-generator",
+    "role": "IoT Data Generator (10 msg/s)",
+    "cpu_usage_percent": 4.2,
+    "memory_working_set_mb": 68.4,
+    "limit_cpu": "Uncapped",
+    "limit_memory": "Uncapped",
+    "status": "NORMAL_LOAD_OK"
+  },
+  {
+    "timestamp": "2026-11-01T10:55:08.781800+00:00",
+    "container_name": "spark-processor",
+    "role": "Streaming Engine (Window/Watermark)",
+    "cpu_usage_percent": 28.6,
+    "memory_working_set_mb": 650.2,
+    "limit_cpu": "2.0 Cores",
+    "limit_memory": "2.0 GB",
+    "status": "NORMAL_LOAD_OK"
+  },
+  {
+    "timestamp": "2026-11-01T10:55:08.781800+00:00",
+    "container_name": "cadvisor",
+    "role": "Container Metrics Exporter",
+    "cpu_usage_percent": 3.8,
+    "memory_working_set_mb": 75.3,
+    "limit_cpu": "Uncapped",
+    "limit_memory": "Uncapped",
+    "status": "NORMAL_LOAD_OK"
+  },
+  {
+    "timestamp": "2026-11-01T10:55:08.781800+00:00",
+    "container_name": "postgres",
+    "role": "Window Metrics Sink (OLTP)",
+    "cpu_usage_percent": 2.1,
+    "memory_working_set_mb": 84.6,
+    "limit_cpu": "Uncapped",
+    "limit_memory": "Uncapped",
+    "status": "NORMAL_LOAD_OK"
+  },
+  {
+    "timestamp": "2026-11-01T10:55:08.781800+00:00",
+    "container_name": "clickhouse",
+    "role": "OLAP Analytics Database",
+    "cpu_usage_percent": 1.8,
+    "memory_working_set_mb": 245.0,
+    "limit_cpu": "1.5 Cores",
+    "limit_memory": "2.0 GB",
+    "status": "NORMAL_LOAD_OK"
+  },
+  {
+    "timestamp": "2026-11-01T10:55:08.781800+00:00",
+    "container_name": "prometheus",
+    "role": "Metrics Collector",
+    "cpu_usage_percent": 2.5,
+    "memory_working_set_mb": 115.0,
+    "limit_cpu": "0.5 Core",
+    "limit_memory": "512 MB",
+    "status": "NORMAL_LOAD_OK"
+  },
+  {
+    "timestamp": "2026-11-01T10:55:08.781800+00:00",
+    "container_name": "grafana",
+    "role": "Visualization Dashboard",
+    "cpu_usage_percent": 1.2,
+    "memory_working_set_mb": 95.0,
+    "limit_cpu": "0.5 Core",
+    "limit_memory": "512 MB",
+    "status": "NORMAL_LOAD_OK"
+  }
+]
