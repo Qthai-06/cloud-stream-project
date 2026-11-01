@@ -51,7 +51,6 @@ kafka-python==2.0.2
 
 # Database Drivers
 psycopg2-binary==2.9.9
-clickhouse-driver==0.2.7
 
 # Metrics & Utilities
 pyyaml==6.0.1
@@ -672,7 +671,7 @@ Pipeline Tuần 4 dùng khóa chính trên ba cột logic và `ON CONFLICT DO UP
      --port 15432 `
      --user admin `
      --database app_db `
-     --password "29012006TanLee!"
+     --password $env:POSTGRES_PASSWORD
    ```
 
    Nếu chạy trong CMD, có thể dùng file SQL:

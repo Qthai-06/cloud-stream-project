@@ -28,6 +28,4 @@ RUN mkdir -p /opt/workspace/checkpoints
 ENV PYTHONPATH=/app
 
 # 5. LỆNH KHỞI CHẠY (ENTRYPOINT)
-# Tạm thời trỏ vào file smoke_test để nghiệm thu kết nối hệ thống.
-# Sau khi Tân Lê code xong, anh chỉ việc đổi thành "src/streaming/spark_pipeline.py"
-CMD ["python", "src/streaming/smoke_test.py"]
+CMD ["python", "src/streaming/spark_pipeline.py"]

@@ -14,7 +14,7 @@ Window, watermark, checkpoint và cơ chế giao nhận thông điệp ảnh hư
 Kết luận phải được chứng minh bằng số liệu và biểu đồ, tối thiểu gồm:
 
 - throughput và consumer lag;
-- độ trễ từ `event_time` đến khi ghi vào ClickHouse;
+- độ trễ từ `event_time` đến khi ghi vào PostgreSQL;
 - tỷ lệ dữ liệu được gán đúng window, dữ liệu bị loại và dữ liệu được xử lý lại;
 - thời gian và trạng thái khôi phục từ checkpoint;
 - mức sử dụng CPU, RAM và I/O của các container.
@@ -31,7 +31,7 @@ Redpanda / topic: iot-sensor-events
         | Spark Structured Streaming (đang hoàn thiện)
         | window + watermark + checkpoint
         v
-ClickHouse (OLAP)
+PostgreSQL (sink)
         |
         +--> Prometheus/Grafana (throughput, lag, checkpoint, latency)
         +--> cAdvisor (CPU, RAM, I/O container)
@@ -62,14 +62,14 @@ liệu muộn bằng watermark, không được dựa vào nhãn này.
 |---|---|---|
 | Redpanda | Message broker tương thích Kafka | 1 CPU, giới hạn RAM `1.5G`; Redpanda tự giới hạn bộ nhớ khả dụng ở `1G` |
 | Redpanda Console | Quan sát topic, partition và consumer | Đã có trong Compose |
-| ClickHouse | Kho OLAP nhận kết quả streaming | 1.5 CPU, giới hạn RAM `2G` |
+| PostgreSQL | Kho lưu kết quả streaming và kiểm tra integrity | Có volume bền vững |
 | Event Generator | Phát sự kiện IoT liên tục | 10 msg/s, chạy nội bộ Docker |
 | cAdvisor | Đo CPU, RAM, filesystem và network của container | Đã có trong Compose |
 | Spark Structured Streaming | Window, watermark, checkpoint và sink | Đang triển khai; chưa có service riêng trong Compose hiện tại |
-| Prometheus/Grafana | Lưu và trực quan hóa metrics | Hạng mục tích hợp tiếp theo; chưa có service trong Compose hiện tại |
+| Prometheus/Grafana | Lưu và trực quan hóa metrics | Có trong Compose; dashboard nghiệp vụ cần bổ sung |
 
-PostgreSQL hiện được giữ lại trong thư mục volume cũ nhưng đã tắt trong
-`docker-compose.yml`; pipeline hiện hướng đến ClickHouse cho dữ liệu phân tích.
+PostgreSQL là database chính của pipeline. ClickHouse không nằm trong stack hiện
+tại để tránh việc sink và tài liệu mô tả hai kiến trúc khác nhau.
 
 ## Yêu cầu tiên quyết
 
@@ -88,9 +88,9 @@ chúng không thay thế việc cấp đủ RAM cho Docker VM.
 
 ### 1. Kiểm tra cấu hình
 
-Các biến `CLICKHOUSE_DB`, `CLICKHOUSE_USER` và `CLICKHOUSE_PASSWORD` được
-Compose đọc từ file `.env`. Không đưa mật khẩu thật vào Git. Nếu repository
-chưa có `.env`, tạo file cục bộ với các giá trị phù hợp trước khi khởi chạy.
+Các biến PostgreSQL và Grafana được Compose đọc từ file `.env`. Không đưa mật
+khẩu thật vào Git. Nếu repository chưa có `.env`, sao chép `.env.example` rồi
+thay các giá trị mẫu bằng secret cục bộ.
 
 Kiểm tra file Compose:
 
@@ -107,8 +107,8 @@ docker compose down --remove-orphans
 docker compose up -d --build
 ```
 
-`down` không xóa các volume bind mount trong `volumes/`. Dữ liệu Redpanda và
-ClickHouse vì thế vẫn tồn tại giữa các lần khởi động. Chỉ xóa dữ liệu thí
+`down` không xóa các volume bind mount trong `volumes/`. Dữ liệu Redpanda,
+PostgreSQL, Prometheus và Grafana vì thế vẫn tồn tại giữa các lần khởi động. Chỉ xóa dữ liệu thí
 nghiệm sau khi đã lưu kết quả và xác nhận không cần khôi phục.
 
 ### 3. Kiểm tra trạng thái
@@ -128,17 +128,21 @@ nhiên.
 |---|---:|---:|---|
 | Redpanda Kafka API | `19092` | `9092` | Kafka client từ máy host |
 | Redpanda Console | `18080` | `8080` | Web UI: `http://localhost:18080` |
-| ClickHouse HTTP | `18123` | `8123` | SQL/HTTP client |
-| ClickHouse native | `19000` | `9000` | `clickhouse-driver` |
+| PostgreSQL | `15432` | `5432` | SQL sink/integrity |
+| Prometheus | `19090` | `9090` | Metrics query |
+| Grafana | `13000` | `3000` | Dashboard |
 | cAdvisor | `8080` | `8080` | Metrics/UI: `http://localhost:8080` |
 | Redpanda Pandaproxy | `8082` | `8082` | HTTP proxy, nếu cần |
+
+Grafana đã được provision datasource Prometheus tự động. Mở
+`http://localhost:13000` và đăng nhập bằng `GRAFANA_ADMIN_USER` /
+`GRAFANA_ADMIN_PASSWORD` trong `.env`.
 
 Từ một container trên `stream-network`, dùng địa chỉ nội bộ:
 
 ```text
 redpanda:29092
-clickhouse:8123
-clickhouse:9000
+postgres:5432
 ```
 
 Không dùng `localhost:19092` từ generator hoặc Spark chạy trong Docker; trong
@@ -178,7 +182,7 @@ kích thước window, thời điểm bắt đầu/kết thúc và trạng thái
 1. Khởi chạy Compose với tốc độ mặc định `10 msg/s`.
 2. Để hệ thống ổn định trong một khoảng thời gian cố định.
 3. Ghi throughput, consumer lag, latency, CPU/RAM và số bản ghi vào
-   ClickHouse.
+   PostgreSQL/Prometheus.
 4. Lưu metrics thô cùng thời điểm đo; không chỉ lưu ảnh dashboard.
 
 ### Late data và watermark
@@ -207,7 +211,7 @@ phải đi kèm đường biểu diễn input rate, processed rate, lag và late
 ### Partition và khôi phục
 
 1. Tăng số partition của topic, đo lại throughput và lag.
-2. Dừng có chủ đích tiến trình Spark hoặc container ClickHouse.
+2. Dừng có chủ đích tiến trình Spark hoặc container PostgreSQL.
 3. Khởi động lại từ checkpoint gần nhất.
 4. So sánh số lượng và định danh bản ghi trước/sau khôi phục để kiểm tra
    duplicate.
@@ -223,7 +227,8 @@ Compose và xác nhận quyền ghi của user chạy Spark.
 Mục tiêu tích hợp:
 
 - cAdvisor: CPU, memory working set, network I/O, filesystem I/O;
-- Prometheus: scrape metrics của Spark, generator, Redpanda và ClickHouse;
+- Prometheus: scrape metrics của cAdvisor và Redpanda; metrics nghiệp vụ của
+  Spark/generator cần được bổ sung theo benchmark;
 - Grafana: dashboard throughput, input/processed rate, consumer lag,
   checkpoint duration/status, watermark, late-data count và end-to-end latency.
 
@@ -257,14 +262,13 @@ Dừng stack nhưng giữ dữ liệu volume:
 docker compose down --remove-orphans
 ```
 
-Chỉ sau khi đã xuất metrics, log, kết quả ClickHouse và checkpoint cần thiết,
+Chỉ sau khi đã xuất metrics, log, kết quả PostgreSQL và checkpoint cần thiết,
 mới xóa dữ liệu thí nghiệm trong các thư mục bind mount. Không commit dữ liệu
 runtime trong `volumes/` hoặc bất kỳ secret nào vào repository.
 
 ## Trạng thái hiện tại
 
-Compose đã có Redpanda, Redpanda Console, ClickHouse, event generator và
-cAdvisor với các giới hạn tài nguyên phục vụ thí nghiệm. Spark Structured
-Streaming, checkpoint bền vững, Prometheus/Grafana, sink hoàn chỉnh và các
-benchmark vẫn là các hạng mục cần triển khai tiếp theo theo kế hoạch nghiên
-cứu.
+Compose đã có Redpanda, Redpanda Console, PostgreSQL, event generator,
+cAdvisor, Prometheus và Grafana với các giới hạn tài nguyên phục vụ thí
+nghiệm. Spark Structured Streaming đã có sink PostgreSQL và checkpoint mount
+bền vững; dashboard nghiệp vụ và benchmark vẫn cần hoàn thiện.
