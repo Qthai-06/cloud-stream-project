@@ -7,7 +7,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-import yaml
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, from_json, lit
 from pyspark.sql.types import (
@@ -20,7 +19,6 @@ from pyspark.sql.types import (
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-CONFIG_PATH = PROJECT_ROOT / "configs" / "pipeline_config.yaml"
 KAFKA_CONNECTOR_PACKAGE = "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1"
 LOGGER = logging.getLogger(__name__)
 
@@ -36,9 +34,7 @@ EVENT_SCHEMA = StructType(
 )
 
 
-def load_config() -> dict[str, Any]:
-    with CONFIG_PATH.open(encoding="utf-8") as config_file:
-        return yaml.safe_load(config_file)
+from src.utils.config_loader import load_config
 
 
 def duration_to_seconds(duration: str) -> int:
@@ -58,13 +54,20 @@ def route_late_events(
     batch_id: int,
     late_log_path: Path,
     watermark_seconds: int,
+    watermark_cutoff: datetime | None = None,
 ) -> None:
     if batch_df.isEmpty():
         return
 
-    watermark_cutoff = datetime.now(timezone.utc) - timedelta(
-        seconds=watermark_seconds
-    )
+    if watermark_cutoff is None:
+        max_event_time = batch_df.selectExpr("max(event_time) AS max_event_time").first()[
+            "max_event_time"
+        ]
+        if max_event_time is None:
+            return
+        watermark_cutoff = max_event_time.replace(tzinfo=timezone.utc) - timedelta(
+            seconds=watermark_seconds
+        )
     late_df = batch_df.filter(
         col("event_time") < lit(watermark_cutoff.replace(tzinfo=None))
     )
@@ -131,6 +134,25 @@ def main() -> None:
 
     spark = create_spark_session()
     spark.sparkContext.setLogLevel("WARN")
+    max_event_time_seen: datetime | None = None
+
+    def route_batch(batch: DataFrame, batch_id: int) -> None:
+        nonlocal max_event_time_seen
+        batch_max = batch.selectExpr("max(event_time) AS max_event_time").first()[
+            "max_event_time"
+        ]
+        if batch_max is not None:
+            candidate = batch_max.replace(tzinfo=timezone.utc)
+            if max_event_time_seen is None or candidate > max_event_time_seen:
+                max_event_time_seen = candidate
+        if max_event_time_seen is not None:
+            route_late_events(
+                batch,
+                batch_id,
+                late_log_path,
+                watermark_seconds,
+                max_event_time_seen - timedelta(seconds=watermark_seconds),
+            )
     try:
         kafka_config = config["kafka"]
         events = (
@@ -148,11 +170,7 @@ def main() -> None:
         query = (
             events.writeStream.outputMode("append")
             .option("checkpointLocation", str(checkpoint_path))
-            .foreachBatch(
-                lambda batch, batch_id: route_late_events(
-                    batch, batch_id, late_log_path, watermark_seconds
-                )
-            )
+            .foreachBatch(route_batch)
             .start()
         )
         LOGGER.info("Late-data router is running; watermark=%s", watermark_delay)

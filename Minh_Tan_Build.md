@@ -51,7 +51,6 @@ kafka-python==2.0.2
 
 # Database Drivers
 psycopg2-binary==2.9.9
-clickhouse-driver==0.2.7
 
 # Metrics & Utilities
 pyyaml==6.0.1
@@ -78,13 +77,13 @@ cloud-stream-project/
 ├── .env.example
 ├── .env
 ├── .gitignore
-├── docker-compose.yml          # Đã có: Redpanda, Postgres, ClickHouse
+├── docker-compose.yml          # Đã có: Redpanda và Postgres
 ├── requirements.txt
 ├── README.md
 │
 ├── configs/                    # Toàn bộ cấu hình hệ thống
 │   ├── pipeline_config.yaml    # Cấu hình Kafka topic, window size, watermark delay
-│   └── database_schema.sql     # Script khởi tạo bảng ClickHouse / Postgres
+│   └── database_schema.sql     # Script khởi tạo bảng PostgreSQL
 │
 ├── checkpoints/                # Nơi Spark lưu trữ State Store và Offset (Cần gitignore)
 │
@@ -106,7 +105,7 @@ cloud-stream-project/
 │   └── utils/                  # Thư viện tiện ích dùng chung
 │       ├── __init__.py
 │       ├── config_loader.py    # Đọc file YAML
-│       └── db_connector.py     # Kết nối ClickHouse / Postgres
+│       └── db_connector.py     # Kết nối PostgreSQL
 │
 ├── benchmarks/                 # Tự động hóa đo đạc thực nghiệm (Tuần 4)
 │   ├── run_watermark_test.sh   # Kịch bản đổi mốc watermark (5s, 30s, 120s)
@@ -128,7 +127,7 @@ cloud-stream-project/
 
 ### BƯỚC 4: VIẾT SMOKE TEST KIỂM TRA PIPELINE SPARK - KAFKA
 
-Để chứng minh môi trường đã cài đặt thành công 100%, bạn hãy tạo file kiểm thử nhanh: `src/streaming/smoke_test.py`. File này sẽ khởi tạo Spark Session, nạp gói thư viện `spark-sql-kafka` và kết nối thử tới Redpanda cổng `localhost:9092`.
+Để chứng minh môi trường đã cài đặt thành công 100%, bạn hãy tạo file kiểm thử nhanh: `src/streaming/smoke_test.py`. File này sẽ khởi tạo Spark Session, nạp gói thư viện `spark-sql-kafka` và kết nối thử tới Redpanda. Trong Docker dùng `redpanda:29092`, còn máy host dùng `localhost:19092`.
 
 ```python
 # src/streaming/smoke_test.py
@@ -154,11 +153,11 @@ def main():
 
     # Test đọc từ Redpanda (Kafka API)
     try:
-        print(">>> Thử kết nối tới Redpanda tại localhost:9092...")
+        print(">>> Thử kết nối tới Redpanda tại redpanda:29092...")
         df = (
             spark.readStream
             .format("kafka")
-            .option("kafka.bootstrap.servers", "localhost:9092")
+            .option("kafka.bootstrap.servers", "redpanda:29092")
             .option("subscribe", "test-topic")
             .option("startingOffsets", "latest")
             .load()
@@ -176,7 +175,10 @@ if __name__ == "__main__":
 #### Chạy kiểm tra:
 1. Đảm bảo Docker đang chạy: `docker compose up -d`.
 2. Chạy smoke test:
-   ```bash
+   ```powershell
+   $env:JAVA_HOME = "C:\Program Files\Java\jdk-17"
+   $env:HADOOP_HOME = "C:\hadoop"
+   $env:Path = "$env:JAVA_HOME\bin;$env:HADOOP_HOME\bin;$env:Path"
    python src/streaming/smoke_test.py
    ```
 *(Ở lần chạy đầu tiên, Spark sẽ mất khoảng 30–60 giây để tải thư viện Maven `spark-sql-kafka-0-10_2.12`. Khi màn hình hiện thông báo kết nối thành công, bạn đã hoàn tất toàn bộ môi trường).*
@@ -196,7 +198,7 @@ if __name__ == "__main__":
 
 ### BƯỚC 3: THỰC NGHIỆM KẾT NỐI VÀ KIỂM TRA
 
-* **Kafka Topic:** `iot-sensor-events` (Sử dụng Redpanda tại `localhost:9092`).
+* **Kafka Topic:** `iot-sensor-events` (Docker dùng `redpanda:29092`, host dùng `localhost:19092`).
 * **Tốc độ phát:** Cấu hình linh hoạt (mặc định: **10 msg/sec**).
 * **Kiểm chứng:**
 * Xác nhận luồng dữ liệu được đẩy thành công thông qua **Redpanda Console UI** (`http://localhost:8080`).
@@ -209,7 +211,7 @@ docker info
 cd "đường dẫn của dự án ví dụ: D:\UTH\Dien_Toan_Dam_May\cloud-stream-project"
 docker compose up -d
 docker compose ps
-Test-NetConnection localhost -Port 9092
+Test-NetConnection localhost -Port 19092
 
 Dữ liệu sinh ra từ `event_producer.py` **không được lưu trực tiếp thành file trong thư mục project**. Nó được gửi vào Kafka-compatible broker là **Redpanda**, trong topic:
 
@@ -311,7 +313,7 @@ Tuy nhiên, **không nên mở trực tiếp các file bên trong thư mục nà
 ```text
 event_producer.py
         |
-        | gửi JSON qua localhost:9092
+        | gửi JSON qua redpanda:29092
         v
 Redpanda
         |
@@ -460,7 +462,7 @@ event_producer.py
         |
         | gửi dữ liệu JSON
         v
-Redpanda - localhost:9092
+Redpanda - redpanda:29092
         |
         | Spark đọc dữ liệu
         v
@@ -565,7 +567,7 @@ Các file cũ không bị thay đổi. Kết quả của Tuần 4 vẫn được
 
 ### ĐẦU VÀO
 
-* **Kafka broker:** `localhost:9092`
+* **Kafka broker:** `redpanda:29092` trong Docker, `localhost:19092` trên host
 * **Kafka topic:** `iot-sensor-events`
 * **Dữ liệu đầu vào:** JSON gồm `device_id`, `event_time`, `temperature`, `humidity`, `status` và `is_late_simulated`.
 * **Watermark:** giá trị `streaming.watermark_delay`, mặc định `120 seconds`.
@@ -669,10 +671,10 @@ Pipeline Tuần 4 dùng khóa chính trên ba cột logic và `ON CONFLICT DO UP
    ```powershell
    .\.venv\Scripts\python.exe .\tests\sql\run_integrity_check.py `
      --host 127.0.0.1 `
-     --port 15432 `
+     --port 5432 `
      --user admin `
      --database app_db `
-     --password "29012006TanLee!"
+     --password "YOUR_PASSWORD"
    ```
 
    Nếu chạy trong CMD, có thể dùng file SQL:
@@ -685,14 +687,27 @@ Pipeline Tuần 4 dùng khóa chính trên ba cột logic và `ON CONFLICT DO UP
 
 4. Khởi động lại đúng pipeline với checkpoint cũ:
 
-   ```cmd
-   .\.venv\Scripts\python.exe .\src\streaming\spark_pipeline.py
+   ```powershell
+   $env:POSTGRES_HOST = "127.0.0.1"
+   $env:POSTGRES_PORT = "5432"
+   $env:POSTGRES_USER = "admin"
+   $env:POSTGRES_DB = "app_db"
+   $env:POSTGRES_PASSWORD = "mat_khau_postgres"
+   $env:JAVA_HOME = "C:\Program Files\Java\jdk-17"
+   $env:HADOOP_HOME = "C:\hadoop"
+   $env:Path = "$env:JAVA_HOME\bin;$env:HADOOP_HOME\bin;$env:Path"
+   .\.venv\Scripts\python.exe -m src.streaming.spark_pipeline
    ```
 
 5. Khi pipeline đã khởi động xong, dừng producer để không phát sinh event mới, rồi chạy lại:
 
    ```powershell
-   .\.venv\Scripts\python.exe .\tests\sql\run_integrity_check.py --user admin --database app_db
+   $env:PGPASSWORD = "YOUR_PASSWORD"
+   .\.venv\Scripts\python.exe .\tests\sql\run_integrity_check.py `
+   --host 127.0.0.1 `
+   --port 15432 `
+   --user admin `
+   --database app_db
    ```
 
 6. Đối chiếu hai lần chạy:
@@ -723,3 +738,387 @@ docker exec -i postgres psql -U admin -d app_db < tests\sql\verify_stream_integr
 ```
 
 vì toán tử `<` gây lỗi `RedirectionNotSupported`.
+
+---
+
+# Tuần 6: Cải thiện Kịch bản nghiệm thu đầy đủ: Generator → Kafka → Spark → PostgreSQL
+
+Phần này là checklist kiểm thử thực tế cho 6 yêu cầu cải thiện. Chỉ thực hiện
+trên môi trường thử nghiệm. Không xóa volume PostgreSQL, dữ liệu Redpanda hoặc
+checkpoint khi đang kiểm tra restart.
+
+## 1. Chuẩn bị và xác nhận một database duy nhất
+
+Pipeline sử dụng **PostgreSQL duy nhất**:
+
+```text
+event_producer.py
+        ↓
+Redpanda/Kafka: iot-sensor-events
+        ↓
+Spark Structured Streaming
+        ↓
+PostgreSQL: sensor_window_metrics
+```
+
+Schema được tạo tự động bởi `spark_pipeline.py` từ
+`configs/database_schema.sql`. Kiểm tra schema sau khi PostgreSQL đã chạy:
+
+```powershell
+docker exec postgres psql -U admin -d app_db -c "\dt"
+docker exec postgres psql -U admin -d app_db -c "\d sensor_window_metrics"
+```
+
+Kết quả cần có bảng `sensor_window_metrics` với khóa chính:
+
+```text
+(window_start, window_end, device_id)
+```
+
+Kiểm tra không còn database ClickHouse trong Compose:
+
+```powershell
+docker compose config --services
+```
+
+Danh sách cần có `redpanda`, `postgres`, `data-generator`,
+`stream-processor`; không cần service `clickhouse`.
+
+## 2. Xác nhận cấu hình Docker và host
+
+### 2.1. Cấu hình trong Docker
+
+Các container dùng địa chỉ nội bộ Docker:
+
+| Thành phần | Địa chỉ trong Docker |
+|---|---|
+| Redpanda Kafka | `redpanda:29092` |
+| PostgreSQL | `postgres:5432` |
+| Kafka topic | `iot-sensor-events` |
+| Spark checkpoint | `/opt/workspace/checkpoints` |
+
+Kiểm tra biến môi trường thực tế của Spark:
+
+```powershell
+docker compose config
+docker inspect spark-processor --format "{{range .Config.Env}}{{println .}}{{end}}"
+```
+
+Phải thấy tối thiểu:
+
+```text
+KAFKA_BOOTSTRAP_SERVERS=redpanda:29092
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+POSTGRES_DB=app_db
+```
+
+### 2.2. Cấu hình khi chạy từ máy host
+
+Các tiến trình chạy ngoài Docker dùng:
+
+| Thành phần | Địa chỉ từ host |
+|---|---|
+| Redpanda Kafka | `localhost:19092` |
+| PostgreSQL | `localhost:15432` |
+
+Không dùng `localhost` bên trong container. Không dùng
+`redpanda:29092` từ PowerShell trên host.
+
+Kiểm tra cổng:
+
+```powershell
+Test-NetConnection localhost -Port 19092
+Test-NetConnection localhost -Port 15432
+```
+
+Hai lệnh cần trả về `TcpTestSucceeded: True`.
+
+## 3. Khởi động pipeline và test end-to-end
+
+### 3.1. Dọn checkpoint chỉ trước lần chạy baseline
+
+Chỉ chạy bước này khi bắt đầu một bộ test mới, không chạy trong test restart:
+
+```powershell
+Remove-Item -Recurse -Force .\checkpoints\spark_pipeline
+Remove-Item -Recurse -Force .\checkpoints\late_data_router -ErrorAction SilentlyContinue
+Remove-Item -Force .\logs\late_data.jsonl -ErrorAction SilentlyContinue
+```
+
+### 3.2. Khởi động hạ tầng
+
+Từ thư mục gốc repository:
+
+```powershell
+docker compose up -d redpanda postgres
+docker compose ps
+```
+
+Chỉ tiếp tục khi `redpanda` và `postgres` ở trạng thái `running`.
+
+### 3.3. Chạy Spark trước Generator
+
+Có hai cách chạy. Chỉ chọn **một** cách để tránh chạy trùng pipeline.
+
+#### Cách A: Chạy Spark bằng Docker
+
+```powershell
+docker compose up -d --build stream-processor
+docker compose logs -f stream-processor
+```
+
+Log đạt yêu cầu phải có thông báo tương tự:
+
+```text
+Pipeline dang chay. Nhan Ctrl+C de dung.
+```
+
+Dockerfile của `stream-processor` phải khởi chạy:
+
+```powershell 
+$env:KAFKA_BOOTSTRAP_SERVERS = "localhost:19092"
+$env:POSTGRES_HOST = "127.0.0.1"
+$env:POSTGRES_PORT = "15432"
+$env:POSTGRES_USER = "admin"
+$env:POSTGRES_DB = "app_db"
+$env:POSTGRES_PASSWORD = "YOUR_PASSWORD"
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-17"
+$env:HADOOP_HOME = "C:\hadoop"
+$env:Path = "$env:JAVA_HOME\bin;
+$env:HADOOP_HOME\bin;$env:Path"
+.\.venv\Scripts\python.exe -m src.streaming.spark_pipeline
+```
+
+Xác nhận entrypoint thực tế:
+
+```powershell
+docker inspect spark-processor --format "{{json .Config.Cmd}}"
+```
+
+#### Cách B: Chạy Spark từ host
+
+```powershell
+.\.venv\Scripts\python.exe .\src\streaming\spark_pipeline.py
+```
+
+Khi chạy từ host, cấu hình Kafka phải là `localhost:19092` và PostgreSQL là
+`localhost:15432` thông qua biến môi trường của terminal hiện tại.
+
+### 3.4. Chạy Generator
+
+Nếu Spark chạy trong Docker, chạy Generator trong Docker. Nếu thấy docker ```powershellcompose logs -f data-generator``` chạy lâu hãy sử dụng lệnh thứ 2:
+
+```powershell
+docker compose up -d --build data-generator
+docker compose logs -f data-generator
+```
+
+Nếu Spark chạy từ host, có thể chạy Generator từ host trong terminal khác:
+
+```powershell
+$env:KAFKA_BOOTSTRAP_SERVERS = "localhost:19092"
+.\.venv\Scripts\python.exe .\src\generator\event_producer.py
+```
+
+Log cần thể hiện:
+
+```text
+>>> Bắt đầu chuyền dữ liệu vào iot-sensor-events
+>>> Cấu hình: 10 msg/s | 20% Late Data
+```
+
+### 3.5. Xác nhận dữ liệu đi hết pipeline
+
+Để Generator chạy ít nhất 3 phút vì watermark hiện tại là `120 seconds`.
+Sau đó kiểm tra Kafka:
+
+```powershell
+docker exec redpanda rpk topic describe iot-sensor-events
+docker exec redpanda rpk topic consume iot-sensor-events --offset start
+```
+
+Kiểm tra PostgreSQL:
+
+```powershell
+docker exec postgres psql -U admin -d app_db -c "SELECT COUNT(*) AS row_count FROM sensor_window_metrics;"
+docker exec postgres psql -U admin -d app_db -c "SELECT * FROM sensor_window_metrics ORDER BY updated_at DESC LIMIT 10;"
+```
+
+**Đạt E2E** khi:
+
+- Kafka có message trong topic `iot-sensor-events`.
+- Spark không báo lỗi đọc Kafka hoặc ghi PostgreSQL.
+- `sensor_window_metrics` có ít nhất một dòng.
+- `window_end > window_start`.
+- `device_id`, `event_count` không bị `NULL`.
+
+## 4. Test restart và giữ checkpoint
+
+### 4.1. Ghi nhận trạng thái trước restart
+
+Giữ Generator chạy ổn định, mở terminal mới và chạy:
+
+```powershell
+python .\tests\sql\run_integrity_check.py `
+  --host 127.0.0.1 `
+  --port 15432 `
+  --user admin `
+  --database app_db `
+  --password "YOUR_PASSWORD"
+```
+
+Nếu biến môi trường chưa có:
+
+```powershell
+$env:POSTGRES_PASSWORD = "mat_khau_trong_file_env"
+```
+
+Lưu lại hai dòng:
+
+```text
+row_count=...
+result_checksum=...
+```
+
+Kiểm tra checkpoint đang tồn tại:
+
+```powershell
+Get-ChildItem .\checkpoints\spark_pipeline -Recurse
+```
+
+### 4.2. Dừng và khởi động lại Spark
+
+Nếu chạy Spark bằng Docker:
+
+```powershell
+docker compose stop stream-processor
+docker compose start stream-processor
+docker compose logs -f stream-processor
+```
+
+Nếu chạy Spark từ host, dừng bằng `Ctrl+C`, sau đó chạy lại:
+
+```powershell
+$env:KAFKA_BOOTSTRAP_SERVERS = "localhost:19092"
+$env:POSTGRES_HOST = "127.0.0.1"
+$env:POSTGRES_PORT = "5432"
+$env:POSTGRES_USER = "admin"
+$env:POSTGRES_DB = "app_db"
+$env:POSTGRES_PASSWORD = "mat_khau_postgres"
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-17"
+$env:HADOOP_HOME = "C:\hadoop"
+$env:Path = "$env:JAVA_HOME\bin;$env:HADOOP_HOME\bin;$env:Path"
+.\.venv\Scripts\python.exe -m src.streaming.spark_pipeline
+```
+
+**Không xóa** `.\checkpoints\spark_pipeline`.
+
+### 4.3. Đối chiếu sau restart
+
+Tạm dừng Generator để không phát sinh event mới, chờ Spark khởi động xong rồi
+chạy lại integrity check:
+
+```powershell
+.\.venv\Scripts\python.exe .\tests\sql\run_integrity_check.py `
+  --host 127.0.0.1 `
+  --port 15432 `
+  --user admin `
+  --database app_db `
+  --password $env:POSTGRES_PASSWORD
+```
+
+**Đạt test restart** khi:
+
+- Các check trả về `PASS`.
+- `duplicate_logical_rows: PASS (0)`.
+- Checkpoint vẫn còn.
+- `row_count` và `result_checksum` không đổi nếu không có event mới.
+- Pipeline tiếp tục đọc event mới sau khi Generator chạy lại.
+
+## 5. Test late data thực tế và log truy vết
+
+### 5.1. Chạy late-data router riêng
+
+Router phải dùng checkpoint riêng, không dùng chung với pipeline chính:
+
+```powershell
+docker compose up -d redpanda
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-17"
+$env:HADOOP_HOME = "C:\hadoop"
+$env:Path = "$env:JAVA_HOME\bin;$env:HADOOP_HOME\bin;$env:Path"
+$env:KAFKA_BOOTSTRAP_SERVERS = "localhost:19092"
+.\.venv\Scripts\python.exe -m src.streaming.late_data_router `
+  --watermark-delay "30 seconds"
+```
+
+Dùng `30 seconds` chỉ để nghiệm thu nhanh. Khi chạy thực nghiệm chính thức,
+bỏ tùy chọn này để dùng `120 seconds` trong cấu hình.
+
+Mở terminal khác và chạy Generator:
+
+```powershell
+$env:KAFKA_BOOTSTRAP_SERVERS = "localhost:19092"
+.\.venv\Scripts\python.exe .\src\generator\event_producer.py
+```
+
+Để Generator chạy đủ lâu cho late event xuất hiện. Kiểm tra:
+
+```powershell
+Get-ChildItem .\checkpoints\late_data_router -Recurse
+Get-Content .\logs\late_data.jsonl
+```
+
+### 5.2. Tiêu chí log có thể truy vết
+
+Mỗi dòng trong `logs\late_data.jsonl` phải là một JSON object hợp lệ và có:
+
+```text
+detected_at
+batch_id
+watermark_delay_seconds
+watermark_cutoff
+reason
+event
+```
+
+Trong `event` cần truy được tối thiểu:
+
+```text
+device_id
+event_time
+temperature
+humidity
+is_late_simulated
+```
+
+Kiểm tra nhanh số dòng log:
+
+```powershell
+(Get-Content .\logs\late_data.jsonl).Count
+```
+
+**Đạt late-data test** khi có ít nhất một dòng với:
+
+```text
+reason=event_time_older_than_watermark
+```
+
+và `event_time` nhỏ hơn `watermark_cutoff`. Không kết luận late data chỉ dựa
+trên `is_late_simulated`; nhãn này chỉ dùng để đối chiếu.
+
+## 6. Bảng nghiệm thu cuối cùng
+
+| # | Hạng mục | Bằng chứng cần lưu | Kết quả |
+|---|---|---|---|
+| 1 | Một database và schema | `\d sensor_window_metrics`, không có service ClickHouse | PASS  |
+| 2 | Docker/host rõ ràng | `docker compose config`, kiểm tra port 19092/15432 | PASS  |
+| 3 | E2E Generator → Kafka → Spark → DB | Kafka có message, PostgreSQL có row | PASS  |
+| 4 | Restart giữ checkpoint | Checksum trước/sau, thư mục checkpoint còn nguyên | PASS  |
+| 5 | Late data thực tế | `logs/late_data.jsonl` có JSON truy vết hợp lệ | PASS  |
+| 6 | Docker entrypoint | `docker inspect` hiển thị `spark_pipeline.py` | PASS  |
+
+Khi hoàn tất, lưu lại thời điểm test, commit đang chạy, cấu hình watermark,
+window, số message Kafka, `row_count`, `result_checksum`, trạng thái container
+và đường dẫn các file log/checkpoint. Không xóa các bằng chứng này trước khi
+đối chiếu báo cáo.

@@ -4,29 +4,29 @@ import json
 import yaml
 import time
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from kafka import KafkaProducer
 
 
-def load_config(config_path = "configs/pipeline_config.yaml"):
-    with open(file=config_path,mode='r',encoding="utf-8") as f:
+def load_config(config_path="configs/pipeline_config.yaml"):
+    with open(file=config_path, mode="r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
-def generator_sensor_event(devices, late_per, min_delay,max_delay):
+def generator_sensor_event(devices, late_per, min_delay, max_delay):
     device_id = random.choice(devices)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     is_late = random.random() < late_per
     if is_late:
-        delay_sec = random.randint(min_delay,max_delay)
+        delay_sec = random.randint(min_delay, max_delay)
         event_time = now - timedelta(seconds=delay_sec)
     else:
         event_time = now
 
     event = {
         "device_id":device_id,
-        "event_time": event_time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "event_time": event_time.isoformat(timespec="seconds"),
         "temperature": round(random.uniform(20.0, 85.0), 2),
         "humidity": round(random.uniform(30.0, 90.0), 2),
         "status": "CRITICAL" if random.random() < 0.05 else "OK",
@@ -50,13 +50,6 @@ def main():
         key_serializer=lambda k: k.encode("utf-8"),
         value_serializer= lambda v: json.dumps(v).encode("utf-8")
     )
-    """print("Khởi tạo Kafka Producer kết nối với Redpanda...")
-    producer = KafkaProducer(
-        bootstrap_servers=kafka_config["bootstrap_servers"],
-        key_serializer=lambda k: k.encode("utf-8"),
-        value_serializer= lambda v: json.dumps(v).encode("utf-8")
-        )"""
-
     topic = kafka_config["topic_name"]
     rate_sleep = 1.0/gen_config["rate_per_sec"]
 

@@ -1,13 +1,12 @@
-# Pipeline configuration placeholder. Values will be added in later steps.
 kafka:
-  bootstrap_servers:  "localhost:9092"
+  bootstrap_servers: "redpanda:29092"
   topic_name: "iot-sensor-events"
 
 generator:
   rate_per_sec: 10
   late_data_percent: 0.20
   min_delay_sec: 30
-  max_delay_sec: 120 
+  max_delay_sec: 120
   devices:
   - "sensor-A101"
   - "sensor-A102"
@@ -25,3 +24,5 @@ database:
   port: 15432
   user: "admin"
   name: "app_db"
+  password: "${POSTGRES_PASSWORD}"
+  table: "sensor_window_metrics"

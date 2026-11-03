@@ -1,12 +1,10 @@
-"""Windowed Spark Structured Streaming pipeline with watermark and PostgreSQL sink."""
+"""Windowed Spark Structured Streaming pipeline with a PostgreSQL sink."""
 
 import logging
 import os
 from pathlib import Path
 from typing import Any
 
-import psycopg2
-import yaml
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import avg, col, count, from_json, window
 from pyspark.sql.types import (
@@ -17,9 +15,11 @@ from pyspark.sql.types import (
     StructType,
 )
 
+from src.utils.config_loader import load_config
+from src.utils.db_connector import open_database_connection
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-CONFIG_PATH = PROJECT_ROOT / "configs" / "pipeline_config.yaml"
 KAFKA_CONNECTOR_PACKAGE = "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1"
 LOGGER = logging.getLogger(__name__)
 
@@ -33,25 +33,6 @@ EVENT_SCHEMA = StructType(
         StructField("is_late_simulated", BooleanType(), nullable=True),
     ]
 )
-
-
-def load_config() -> dict[str, Any]:
-    with CONFIG_PATH.open(encoding="utf-8") as config_file:
-        return yaml.safe_load(config_file)
-
-
-def open_database_connection(database: dict[str, Any]) -> Any:
-    password = database.get("password")
-    if password is None:
-        raise KeyError("Missing database password in pipeline_config.yaml")
-
-    return psycopg2.connect(
-        host=database["host"],
-        port=database["port"],
-        dbname=database["name"],
-        user=database["user"],
-        password=password,
-    )
 
 
 def create_database_table(database: dict[str, Any]) -> None:
@@ -141,9 +122,10 @@ def validate_windows_runtime() -> None:
         for base in java_candidates:
             if not base.exists():
                 continue
-            for candidate in sorted(base.glob("jdk-17*"), key=lambda item: item.name, reverse=True):
-                java_exe = candidate / "bin" / "java.exe"
-                if java_exe.is_file():
+            for candidate in sorted(
+                base.glob("jdk-17*"), key=lambda item: item.name, reverse=True
+            ):
+                if (candidate / "bin" / "java.exe").is_file():
                     java_home = str(candidate)
                     break
             if java_home:
@@ -155,7 +137,9 @@ def validate_windows_runtime() -> None:
         )
 
     os.environ["JAVA_HOME"] = java_home
-    os.environ["PATH"] = str(Path(java_home) / "bin") + os.pathsep + os.environ.get("PATH", "")
+    os.environ["PATH"] = str(Path(java_home) / "bin") + os.pathsep + os.environ.get(
+        "PATH", ""
+    )
 
     hadoop_home = os.environ.get("HADOOP_HOME") or "C:/hadoop"
     winutils = Path(hadoop_home) / "bin" / "winutils.exe"
@@ -166,7 +150,9 @@ def validate_windows_runtime() -> None:
         )
 
     os.environ["HADOOP_HOME"] = str(Path(hadoop_home))
-    os.environ["PATH"] = str(Path(hadoop_home) / "bin") + os.pathsep + os.environ.get("PATH", "")
+    os.environ["PATH"] = str(Path(hadoop_home) / "bin") + os.pathsep + os.environ.get(
+        "PATH", ""
+    )
 
 
 def main() -> None:

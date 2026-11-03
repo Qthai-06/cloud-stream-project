@@ -1,4 +1,6 @@
-"""Smoke test for the local Spark and Redpanda Kafka connection."""
+"""Smoke test for the Spark and Redpanda Kafka connection."""
+
+import os
 
 from pyspark.sql import SparkSession
 
@@ -27,18 +29,19 @@ def main() -> None:
     try:
         spark.sparkContext.setLogLevel("WARN")
         print(f"Spark Version: {spark.version} - Khoi tao thanh cong!")
-        print(">>> Thu ket noi toi Redpanda tai localhost:9092...")
+        bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "redpanda:29092")
+        print(f">>> Thu ket noi toi Redpanda tai {bootstrap_servers}...")
 
         (
             spark.readStream.format("kafka")
-            .option("kafka.bootstrap.servers", "localhost:9092")
+            .option("kafka.bootstrap.servers", bootstrap_servers)
             .option("subscribe", "test-topic")
             .option("startingOffsets", "latest")
             .load()
         )
     except Exception as error:
         raise RuntimeError(
-            "Khong the khoi tao Kafka source tai localhost:9092. "
+            f"Khong the khoi tao Kafka source tai {bootstrap_servers}. "
             "Hay dam bao Redpanda dang chay va topic test-topic ton tai."
         ) from error
     finally:

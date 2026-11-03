@@ -4,9 +4,8 @@ pyspark==3.5.1
 # Kafka Producer & Ingestion
 kafka-python==2.0.2
 
-# Database Drivers 
+# Database Driver
 psycopg2-binary==2.9.9 
-clickhouse-driver==0.2.7
 
 # Metrics & Utilities 
 pyyaml==6.0.1 
