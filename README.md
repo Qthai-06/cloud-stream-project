@@ -56,6 +56,13 @@ Thiết lập mặc định trong
 `is_late_simulated` chỉ là nhãn phục vụ đối chiếu; pipeline phải xác định dữ
 liệu muộn bằng watermark, không được dựa vào nhãn này.
 
+Mọi event được kiểm tra độc lập bằng
+[`src/generator/event_schema.py`](./src/generator/event_schema.py) trước khi
+được serialize và gửi vào Kafka. Validator kiểm tra các field bắt buộc, kiểu
+dữ liệu, timestamp có timezone, miền giá trị nhiệt độ/độ ẩm và trạng thái.
+Spark Structured Streaming dùng cùng định nghĩa schema để tránh lệch contract
+giữa producer và consumer.
+
 ## Thành phần hạ tầng
 
 | Thành phần | Vai trò | Giới hạn / trạng thái |
@@ -161,6 +168,59 @@ container, `localhost` trỏ về chính container đó.
 ├── docker-compose.yml
 └── requirements.txt
 ```
+
+### Kiểm thử tích hợp Spark window
+
+Chạy bộ test hồi quy bằng Python trong môi trường dự án:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest tests.test_smoke_pipeline -v
+```
+
+Test `SparkWindowIntegrationTests` khởi tạo Spark local thật, đọc các payload
+event JSON qua `EVENT_SCHEMA`, chạy aggregation event-time của pipeline và
+kiểm tra window 1 phút, nhóm độc lập theo `device_id`, số lượng event và giá
+trị trung bình. Test không kết nối Kafka/PostgreSQL nên có thể tái lập độc lập
+với hạ tầng Docker.
+
+Test watermark dùng socket source và memory sink của Spark Structured Streaming
+để đẩy từng micro-batch thực, nâng watermark lên trước, sau đó gửi một event có
+`event_time` cũ hơn watermark. Kết quả chứng minh event cũ không làm tăng
+window đã đóng. Trên Windows, test micro-batch này cần Hadoop native runtime
+hoạt động; test cutoff bằng DataFrame vẫn chạy để kiểm tra record cũ bị route.
+Test PostgreSQL sẽ chạy khi `POSTGRES_PASSWORD` được cấu hình
+và PostgreSQL khả dụng; test thực hiện insert, upsert cùng khóa chính rồi đọc
+lại giá trị đã cập nhật.
+
+Router lưu ba lớp bằng chứng: `raw_events.jsonl` cho mọi payload đầu vào,
+`accepted_events.jsonl` cho payload hợp lệ không trễ, và
+`dead_letter.jsonl` cho payload không parse được. `late_data.jsonl` chỉ chứa
+payload hợp lệ nhưng có `event_time` nhỏ hơn watermark Spark thực tế. Bài test
+đối chiếu số dòng raw với tổng accepted + late + dead-letter để phát hiện mất
+dữ liệu.
+
+`WatermarkProgressTracker` lấy `eventTime.watermark` từ
+`StreamingQueryProgress`; router không còn tự tính cutoff từ
+`max_event_time` của batch. Nếu Spark chưa báo watermark, router không tự
+gắn nhãn late và vẫn lưu raw payload.
+
+Khi toàn bộ Compose đang chạy, có thể bật test xuyên suốt Kafka → Spark →
+PostgreSQL bằng:
+
+```powershell
+$env:RUN_LIVE_INTEGRATION = "1"
+.\.venv\Scripts\python.exe -m unittest tests.test_smoke_pipeline.KafkaSparkPostgreSQLIntegrationTests -v
+```
+
+Test này gửi ba event thật vào Kafka, chờ Spark đóng window bằng watermark,
+đọc row tương ứng từ PostgreSQL rồi xóa dữ liệu thử nghiệm. Không bật cờ này
+thì test được skip để không phụ thuộc hạ tầng đang chạy.
+
+Checkpoint của Spark được mount tại `/opt/workspace/checkpoints` trong
+container. Biến `CHECKPOINT_ROOT` được cấu hình cùng giá trị này để
+`checkpoint_location: checkpoints/spark_pipeline` được resolve thành
+`/opt/workspace/checkpoints/spark_pipeline`, bảo đảm state nằm trên volume
+bền vững.
 
 Các module Spark, metrics, database và benchmark hiện còn là khung ban đầu.
 README mô tả đích thiết kế; không coi các placeholder này là bằng chứng rằng

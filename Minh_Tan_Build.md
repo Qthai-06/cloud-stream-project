@@ -1115,10 +1115,187 @@ trên `is_late_simulated`; nhãn này chỉ dùng để đối chiếu.
 | 2 | Docker/host rõ ràng | `docker compose config`, kiểm tra port 19092/15432 | PASS  |
 | 3 | E2E Generator → Kafka → Spark → DB | Kafka có message, PostgreSQL có row | PASS  |
 | 4 | Restart giữ checkpoint | Checksum trước/sau, thư mục checkpoint còn nguyên | PASS  |
-| 5 | Late data thực tế | `logs/late_data.jsonl` có JSON truy vết hợp lệ | PASS  |
+| 5 | Late data thực tế | `logs/late_data.jsonl` có JSON truy vết hợp lệ | BLOCKED: compose hiện tại chưa chạy `late_data_router` |
 | 6 | Docker entrypoint | `docker inspect` hiển thị `spark_pipeline.py` | PASS  |
 
 Khi hoàn tất, lưu lại thời điểm test, commit đang chạy, cấu hình watermark,
 window, số message Kafka, `row_count`, `result_checksum`, trạng thái container
 và đường dẫn các file log/checkpoint. Không xóa các bằng chứng này trước khi
 đối chiếu báo cáo.
+
+---
+
+# Tuần 6: Cải thiện lần 2 — Checklist bằng chứng nghiệm thu
+
+Mục này là checklist bổ sung cần hoàn thiện để đủ điều kiện nghiệm thu. Không
+đánh dấu trước khi đã chạy thực tế và lưu lại log, ảnh chụp màn hình hoặc file
+kết quả tương ứng. Mỗi bằng chứng nên ghi rõ thời gian chạy, commit đang dùng,
+cấu hình watermark/window và trạng thái các container.
+
+## Checklist bắt buộc
+
+- [ ] **Chạy thực tế luồng tích hợp Generator → Redpanda → Spark → PostgreSQL.**
+  - Khởi động toàn bộ Compose:
+    ```powershell
+    docker compose up -d --build
+    docker compose ps
+    ```
+  - Chạy generator đủ lâu để có dữ liệu:
+    ```powershell
+    docker compose logs -f data-generator
+    ```
+  - Lưu log cho thấy generator phát event, Redpanda nhận message, Spark xử lý
+    và PostgreSQL có row trong `sensor_window_metrics`.
+
+- [ ] **Trích xuất log/ảnh chụp chứng minh số lượng event đầu vào khớp với số
+  lượng window output.**
+  - Ghi số event đầu vào từ log generator hoặc consumer Kafka.
+  - Ghi số window output từ PostgreSQL:
+    ```powershell
+    docker exec postgres psql -U admin -d app_db -c `
+      "SELECT COUNT(*) AS window_count FROM sensor_window_metrics;"
+    ```
+  - Lưu câu lệnh, thời gian lấy số liệu và ảnh/log kết quả. Nếu một window
+    gộp nhiều event, phải kèm tổng `event_count`:
+    ```powershell
+    docker exec postgres psql -U admin -d app_db -c `
+      "SELECT COALESCE(SUM(event_count), 0) AS processed_event_count,
+              COUNT(*) AS window_count
+       FROM sensor_window_metrics;"
+    ```
+  - Đối chiếu `processed_event_count` với số event hợp lệ đã phát trong cùng
+    khoảng thời gian; ghi rõ event late và dead-letter nếu không thuộc output
+    window.
+
+- [ ] **Xác nhận đường dẫn checkpoint thực tế nằm đúng bên trong thư mục bind
+  mount.**
+  - Kiểm tra mount:
+    ```powershell
+    docker inspect spark-processor --format `
+      "{{range .Mounts}}{{println .Source \" -> \" .Destination}}{{end}}"
+    ```
+  - Kiểm tra checkpoint trong container:
+    ```powershell
+    docker exec spark-processor sh -c `
+      "find /opt/workspace/checkpoints -maxdepth 3 -type f | sort | head -50"
+    ```
+  - Bằng chứng đạt: checkpoint nằm dưới
+    `/opt/workspace/checkpoints`, không nằm riêng dưới `/app/checkpoints`.
+
+- [ ] **Thực hiện dừng Spark/container và khởi động lại với checkpoint cũ.**
+  - Ghi lại danh sách file checkpoint trước khi dừng:
+    ```powershell
+    Get-ChildItem .\checkpoints -Recurse |
+      Select-Object FullName,Length,LastWriteTime
+    ```
+  - Dừng riêng Spark, không xóa volume/checkpoint:
+    ```powershell
+    docker compose stop stream-processor
+    docker compose start stream-processor
+    docker compose logs --tail 100 stream-processor
+    ```
+  - Xác nhận pipeline tiếp tục dùng checkpoint cũ và không tạo lại state từ
+    đầu.
+
+- [ ] **So sánh checksum và kiểm tra duplicate data trước và sau khi restart.**
+  - Xuất dữ liệu ổn định theo thứ tự trước khi restart:
+    ```powershell
+    docker exec postgres psql -U admin -d app_db -At -F "|" -c `
+      "SELECT window_start,window_end,device_id,event_count,
+              average_temperature,average_humidity
+       FROM sensor_window_metrics
+       ORDER BY window_start,window_end,device_id;" `
+      > .\logs\before_restart_rows.txt
+    ```
+  - Tạo checksum:
+    ```powershell
+    Get-FileHash .\logs\before_restart_rows.txt -Algorithm SHA256
+    ```
+  - Sau restart, chờ pipeline ổn định rồi xuất lại thành
+    `.\logs\after_restart_rows.txt` và chạy `Get-FileHash`.
+  - Kiểm tra duplicate theo khóa chính:
+    ```powershell
+    docker exec postgres psql -U admin -d app_db -c `
+      "SELECT window_start, window_end, device_id, COUNT(*) AS duplicates
+       FROM sensor_window_metrics
+       GROUP BY window_start, window_end, device_id
+       HAVING COUNT(*) > 1;"
+    ```
+  - Lưu checksum trước/sau, row count trước/sau và kết quả truy vấn duplicate.
+
+- [ ] **Thực nghiệm kiểm thử Watermark với các gói dữ liệu:**
+  - [ ] **Trong khoảng thời gian watermark:** event có `event_time` còn nằm
+    trong vùng cho phép; xác nhận được xử lý vào window.
+  - [ ] **Vừa vượt ngưỡng watermark:** event có `event_time` nhỏ hơn watermark
+    một khoảng vừa đủ; xác nhận được ghi vào `logs\late_data.jsonl`.
+  - [ ] **Trễ sâu hơn watermark:** event có `event_time` cũ rõ rệt; xác nhận
+    bị route vào late-data/dead-letter theo chính sách và có lý do.
+  - Với mỗi gói, lưu payload đầu vào, `event_time`, watermark thực tế,
+    `watermark_cutoff`, batch id và kết quả PostgreSQL/log.
+
+- [ ] **Xuất báo cáo chi tiết record nào được xử lý, record nào bị loại bỏ và
+  lý do tương ứng.**
+  - Lưu các file:
+    ```text
+    logs/raw_events.jsonl
+    logs/accepted_events.jsonl
+    logs/late_data.jsonl
+    logs/dead_letter.jsonl
+    ```
+  - Mỗi record phải truy được tối thiểu `batch_id`, `device_id` hoặc
+    `raw_payload`, `event_time` nếu parse được, trạng thái xử lý và lý do.
+  - Tổng hợp số lượng:
+    ```powershell
+    Get-Content .\logs\raw_events.jsonl | Measure-Object -Line
+    Get-Content .\logs\accepted_events.jsonl | Measure-Object -Line
+    Get-Content .\logs\late_data.jsonl | Measure-Object -Line
+    Get-Content .\logs\dead_letter.jsonl | Measure-Object -Line
+    ```
+  - Bằng chứng đạt khi tổng raw được phân loại đầy đủ thành accepted, late và
+    dead-letter, không có record không xác định trạng thái.
+
+- [ ] **Thống kê tỷ lệ late data thực tế sau một khoảng thời gian chạy giả
+  lập đủ dài.**
+  - Ghi thời điểm bắt đầu/kết thúc, tổng event và số event late:
+    ```powershell
+    $raw = (Get-Content .\logs\raw_events.jsonl).Count
+    $late = (Get-Content .\logs\late_data.jsonl).Count
+    [pscustomobject]@{
+      raw_events = $raw
+      late_events = $late
+      late_ratio = if ($raw -gt 0) { $late / $raw } else { 0 }
+    }
+    ```
+  - Lặp lại với thời lượng đủ dài, không kết luận từ một vài micro-batch.
+  - Đính kèm cấu hình mục tiêu `late_data_percent: 0.20` và khoảng thời gian
+    chạy để giải thích sai số ngẫu nhiên.
+
+- [ ] **Bổ sung bài test tự động cho CSDL sink và cơ chế `ON CONFLICT`.**
+  - Chạy:
+    ```powershell
+    .\.venv\Scripts\python.exe -m unittest `
+      tests.test_smoke_pipeline.PostgreSQLIntegrationTests -v
+    ```
+  - Bằng chứng phải có insert thành công, ghi lại cùng khóa
+    `(window_start, window_end, device_id)` và đọc lại giá trị đã được update,
+    không tạo thêm dòng duplicate.
+  - Nếu PostgreSQL chưa chạy, không ghi nhận PASS; phải khởi động dịch vụ và
+    chạy lại test integration.
+
+- [ ] **Cập nhật tập tệp môi trường/dependencies kiểm thử bao gồm
+  `kafka-python`, `pyspark`, `psycopg2-binary`.**
+  - Kiểm tra manifest:
+    ```powershell
+    Select-String -Path .\requirements.txt `
+      -Pattern "kafka-python|pyspark|psycopg2-binary"
+    ```
+  - Cài đặt trong đúng virtual environment:
+    ```powershell
+    .\.venv\Scripts\python.exe -m pip install -r .\requirements.txt
+    ```
+  - Xác minh import:
+    ```powershell
+    .\.venv\Scripts\python.exe -c `
+      "import kafka, pyspark, psycopg2; print('dependencies: OK')"
+    ```
+  - Lưu kết quả `pip freeze` hoặc ảnh terminal cùng phiên bản Python đang dùng.

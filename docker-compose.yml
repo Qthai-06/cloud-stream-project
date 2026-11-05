@@ -79,6 +79,10 @@ services:
       - redpanda
     networks:
       - stream-network
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./checkpoints:/opt/workspace/checkpoints
+      - ./logs:/app/logs
 
   # ==========================================
   # 4. INFRA METRICS MONITORING (Giám sát phần cứng)
@@ -111,14 +115,43 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
+      - CHECKPOINT_ROOT=/opt/workspace/checkpoints
     volumes:
       - ./checkpoints:/opt/workspace/checkpoints # Ánh xạ điểm neo trạng thái
+      - ./logs:/app/logs
+      - ./configs:/app/configs:ro
     depends_on:
       - redpanda
       - postgres
     networks:
       - stream-network
-      
+
+  # ==========================================
+  # 6. LATE-DATA AUDIT ROUTER
+  # ==========================================
+  late-data-router:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    container_name: late-data-router
+    command: ["python", "src/streaming/late_data_router.py"]
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:29092
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - CHECKPOINT_ROOT=/opt/workspace/checkpoints
+    volumes:
+      - ./checkpoints:/opt/workspace/checkpoints
+      - ./logs:/app/logs
+      - ./configs:/app/configs:ro
+    depends_on:
+      - redpanda
+    networks:
+      - stream-network
+
 networks:
   stream-network:
     driver: bridge

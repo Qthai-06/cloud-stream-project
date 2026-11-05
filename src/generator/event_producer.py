@@ -7,6 +7,8 @@ import os
 from datetime import datetime, timedelta, timezone
 from kafka import KafkaProducer
 
+from src.generator.event_schema import validate_event
+
 
 def load_config(config_path="configs/pipeline_config.yaml"):
     with open(file=config_path, mode="r", encoding="utf-8") as f:
@@ -25,14 +27,15 @@ def generator_sensor_event(devices, late_per, min_delay, max_delay):
         event_time = now
 
     event = {
-        "device_id":device_id,
+        "device_id": device_id,
         "event_time": event_time.isoformat(timespec="seconds"),
         "temperature": round(random.uniform(20.0, 85.0), 2),
         "humidity": round(random.uniform(30.0, 90.0), 2),
         "status": "CRITICAL" if random.random() < 0.05 else "OK",
         "is_late_simulated": is_late,
     }
-    return device_id,event
+    validate_event(event)
+    return device_id, event
 
 def main():
     # 1. load config

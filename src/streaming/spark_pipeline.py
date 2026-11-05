@@ -7,14 +7,8 @@ from typing import Any
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import avg, col, count, from_json, window
-from pyspark.sql.types import (
-    BooleanType,
-    DoubleType,
-    StringType,
-    StructField,
-    StructType,
-)
 
+from src.generator.event_schema import build_spark_event_schema
 from src.utils.config_loader import load_config
 from src.utils.db_connector import open_database_connection
 
@@ -23,16 +17,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 KAFKA_CONNECTOR_PACKAGE = "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1"
 LOGGER = logging.getLogger(__name__)
 
-EVENT_SCHEMA = StructType(
-    [
-        StructField("device_id", StringType(), nullable=False),
-        StructField("event_time", StringType(), nullable=False),
-        StructField("temperature", DoubleType(), nullable=False),
-        StructField("humidity", DoubleType(), nullable=False),
-        StructField("status", StringType(), nullable=True),
-        StructField("is_late_simulated", BooleanType(), nullable=True),
-    ]
-)
+EVENT_SCHEMA = build_spark_event_schema()
 
 
 def create_database_table(database: dict[str, Any]) -> None:
@@ -95,6 +80,41 @@ def create_spark_session() -> SparkSession:
         .config("spark.sql.shuffle.partitions", "2")
         .getOrCreate()
     )
+
+
+def build_windowed_events(events: DataFrame, streaming: dict[str, Any]) -> DataFrame:
+    """Aggregate parsed events into event-time windows per device."""
+    return (
+        events.withWatermark("event_time", streaming["watermark_delay"])
+        .groupBy(
+            window(col("event_time"), streaming["window_duration"]),
+            col("device_id"),
+        )
+        .agg(
+            count("*").alias("event_count"),
+            avg("temperature").alias("average_temperature"),
+            avg("humidity").alias("average_humidity"),
+        )
+        .select(
+            col("window.start").alias("window_start"),
+            col("window.end").alias("window_end"),
+            "device_id",
+            "event_count",
+            "average_temperature",
+            "average_humidity",
+        )
+    )
+
+
+def resolve_checkpoint_path(configured_path: str) -> Path:
+    """Resolve a checkpoint name inside the persistent checkpoint mount."""
+    path = Path(configured_path)
+    if path.is_absolute():
+        return path
+    checkpoint_root = Path(
+        os.getenv("CHECKPOINT_ROOT", str(PROJECT_ROOT / "checkpoints"))
+    )
+    return checkpoint_root / path.name
 
 
 def has_valid_winutils(target: Path) -> bool:
@@ -186,31 +206,12 @@ def main() -> None:
                 & col("humidity").isNotNull()
             )
         )
-        windowed = (
-            events.withWatermark("event_time", streaming["watermark_delay"])
-            .groupBy(
-                window(col("event_time"), streaming["window_duration"]),
-                col("device_id"),
-            )
-            .agg(
-                count("*").alias("event_count"),
-                avg("temperature").alias("average_temperature"),
-                avg("humidity").alias("average_humidity"),
-            )
-            .select(
-                col("window.start").alias("window_start"),
-                col("window.end").alias("window_end"),
-                "device_id",
-                "event_count",
-                "average_temperature",
-                "average_humidity",
-            )
-        )
+        windowed = build_windowed_events(events, streaming)
         query = (
-            windowed.writeStream.outputMode("append")
+            windowed.writeStream.outputMode("update")
             .option(
                 "checkpointLocation",
-                str(PROJECT_ROOT / streaming["checkpoint_location"]),
+                str(resolve_checkpoint_path(streaming["checkpoint_location"])),
             )
             .foreachBatch(lambda batch, batch_id: write_batch(batch, batch_id, database))
             .start()
