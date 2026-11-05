@@ -1,5 +1,11 @@
 # Tuần 1 - 2
 
+> **Tài liệu tham khảo lịch sử:** file này ghi lại kế hoạch thiết kế ban đầu.
+> Khi chạy project hiện tại, hãy dùng [README.md](../README.md) và
+> [Demo.md](./Demo.md). Runtime hiện tại dùng Spark chạy trong Docker và
+> PostgreSQL; không triển khai ClickHouse hoặc Spark local theo hướng dẫn
+> cũ bên dưới.
+
 ### BƯỚC 1: LỰA CHỌN ENGINE – NÊN CHỌN SPARK HAY FLINK?
 
 Đối với Đề tài 16 (yêu cầu đo P95 Latency, kiểm tra Watermark, Crash-Recovery với Checkpoint và đối chiếu kết quả Batch/Stream):
@@ -77,13 +83,13 @@ cloud-stream-project/
 ├── .env.example
 ├── .env
 ├── .gitignore
-├── docker-compose.yml          # Đã có: Redpanda, Postgres, ClickHouse
+├── docker-compose.yml          # Redpanda, PostgreSQL, monitoring và Spark
 ├── requirements.txt
 ├── README.md
 │
 ├── configs/                    # Toàn bộ cấu hình hệ thống
 │   ├── pipeline_config.yaml    # Cấu hình Kafka topic, window size, watermark delay
-│   └── database_schema.sql     # Script khởi tạo bảng ClickHouse / Postgres
+│   └── database_schema.sql     # Script khởi tạo bảng PostgreSQL
 │
 ├── checkpoints/                # Nơi Spark lưu trữ State Store và Offset (Cần gitignore)
 │
@@ -105,7 +111,7 @@ cloud-stream-project/
 │   └── utils/                  # Thư viện tiện ích dùng chung
 │       ├── __init__.py
 │       ├── config_loader.py    # Đọc file YAML
-│       └── db_connector.py     # Kết nối ClickHouse / Postgres
+│       └── db_connector.py     # Kết nối PostgreSQL
 │
 ├── benchmarks/                 # Tự động hóa đo đạc thực nghiệm (Tuần 4)
 │   ├── run_watermark_test.sh   # Kịch bản đổi mốc watermark (5s, 30s, 120s)

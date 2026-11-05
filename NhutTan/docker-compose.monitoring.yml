@@ -2,9 +2,9 @@ services:
   # ==========================================
   # 1. METRICS COLLECTOR: PROMETHEUS
   # ==========================================
-  prometheus:
+  nhuttan-prometheus:
     image: docker.io/prom/prometheus:v2.51.0
-    container_name: prometheus
+    container_name: nhuttan-prometheus
     restart: unless-stopped
     ports:
       - "9090:9090"
@@ -31,7 +31,7 @@ services:
   # ==========================================
   grafana:
     image: docker.io/grafana/grafana:10.4.0
-    container_name: grafana
+    container_name: nhuttan-grafana
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -48,7 +48,7 @@ services:
       - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro,z
       - ./grafana/dashboards_json:/etc/grafana/dashboards:ro,z
     depends_on:
-      - prometheus
+      - nhuttan-prometheus
     networks:
       - stream-network
     deploy:

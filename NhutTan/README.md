@@ -32,7 +32,7 @@ NhutTan/
 ├── grafana/                                   # Cấu hình trực quan hóa Grafana
 │   ├── provisioning/                          # Cơ chế tự động nạp cấu hình (Auto-provisioning)
 │   │   ├── datasources/
-│   │   │   └── prometheus.yml                 # Tự động kết nối DataSource Prometheus (http://prometheus:9090)
+│   │   │   └── prometheus.yml                 # Tự động kết nối DataSource Prometheus (http://nhuttan-prometheus:9090)
 │   │   └── dashboards/
 │   │       └── dashboards.yml                 # Tự động nạp các file Dashboards JSON vào Grafana
 │   └── dashboards_json/                       # Định nghĩa các Dashboard JSON dựng sẵn
@@ -95,6 +95,11 @@ pip install prometheus-client pyyaml pillow python-docx
 cd NhutTan
 docker compose -f docker-compose.monitoring.yml up -d
 ```
+
+Nếu chạy cùng pipeline chính, hãy khởi động Compose gốc trước để tạo network
+`stream-network`. Bộ monitoring này dùng các container riêng
+`nhuttan-prometheus` và `nhuttan-grafana`, nên không xung đột với monitoring
+gốc. Dashboard Grafana mở tại `http://localhost:3000`.
 
 ---
 
