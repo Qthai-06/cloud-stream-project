@@ -8,6 +8,9 @@ volumes/
 *.db
 *.log
 checkpoints/
+logs/
+backups/
+recovery-evidence/
 
 # Sensitive Credentials
 .env

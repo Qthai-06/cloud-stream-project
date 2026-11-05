@@ -27,5 +27,9 @@ RUN mkdir -p /opt/workspace/checkpoints
 
 ENV PYTHONPATH=/app
 
+<<<<<<< HEAD
 # 5. LỆNH KHỞI CHẠY PIPELINE CHÍNH THỨC
+=======
+# 5. LỆNH KHỞI CHẠY (ENTRYPOINT)
+>>>>>>> 9f6d3db92409b42661d2166f607bbd22bc50037f
 CMD ["python", "src/streaming/spark_pipeline.py"]

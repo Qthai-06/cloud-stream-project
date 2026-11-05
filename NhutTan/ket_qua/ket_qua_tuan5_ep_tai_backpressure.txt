@@ -1,0 +1,46 @@
+================================================================================
+ KẾT QUẢ THỰC NGHIỆM ÉP TẢI & PHÂN TÍCH BACKPRESSURE (TUẦN 5 - TÂN LƯU)
+ Đề tài 16: Cloud Stream Project — Đo lường Backpressure và Consumer Lag
+ Thời gian thực hiện: 2026-11-04 15:50:52
+================================================================================
+
+1. TỔNG QUAN KẾT QUẢ BÀI ĐO ÉP TẢI (STRESS TEST SUMMARY):
+ - Tốc độ phát đỉnh (Peak Input Rate)      : 500 msg/s (Gấp 50 lần baseline)
+ - Công suất xử lý tối đa của Spark       : 200 rows/s
+ - Consumer Lag tích tụ lớn nhất          : 15,000 messages
+ - Thời gian thực thi Micro-Batch lớn nhất : 3.85 giây (Ngưỡng trigger: 1.0s)
+ - Thời điểm bắt đầu xuất hiện Backpressure: Giây thứ 60
+ - ĐIỂM NGHẼN CỔ CHAI CHÍNH (BOTTLENECK)  : spark-processor (CPU Compute & JSON Deserialization Saturation ~98.8%)
+ - Tác động lan truyền sang Broker        : redpanda (Queue buffer accumulation & Consumer Lag build-up)
+ - Độ trễ đầu cuối cực đại (P99 Latency)  : ~78.85 giây
+
+2. BẢNG SO SÁNH TÀI NGUYÊN PHẦN CỨNG: BASELINE (10 MSG/S) VS STRESS TEST (500 MSG/S):
+------------------------------------------------------------------------------------------
+Container          | CPU Base   | CPU Stress | RAM Base   | RAM Stress | Trạng thái
+------------------------------------------------------------------------------------------
+spark-processor    | 28.6%      | 98.7%      | 650.2MB    | 1485.0MB   | CRITICAL_BOTTLENECK (Bão hòa 98.7% CPU)
+redpanda           | 14.5%      | 42.8%      | 420.8MB    | 712.5MB    | HIGH_LOAD_OK (Đệm hàng đợi lag tốt)
+event-generator    | 4.2%       | 22.4%      | 68.4MB     | 95.2MB     | NORMAL_LOAD_OK (Phát tải đầy đủ)
+postgres           | 2.1%       | 12.8%      | 84.6MB     | 136.4MB    | NORMAL_LOAD_OK (Ghi batch ổn định)
+cadvisor           | 3.8%       | 6.5%       | 75.3MB     | 82.0MB     | NORMAL_LOAD_OK
+prometheus         | 2.5%       | 5.2%       | 115.0MB    | 142.0MB    | NORMAL_LOAD_OK
+grafana            | 1.2%       | 2.8%       | 95.0MB     | 112.0MB    | NORMAL_LOAD_OK
+------------------------------------------------------------------------------------------
+
+3. CÁC MỐC THỜI GIAN QUAN TRỌNG TRONG QUÁ TRÌNH ÉP TẢI:
+ * Giây   0 [BASELINE   ]: In= 10 msg/s | Out= 10 rows/s | Lag=    0 msgs | BatchDur=0.185s | SparkCPU=28.6% [NORMAL]
+ * Giây  29 [BASELINE   ]: In= 10 msg/s | Out= 10 rows/s | Lag=    0 msgs | BatchDur=0.215s | SparkCPU=29.4% [NORMAL]
+ * Giây  45 [RAMP_UP    ]: In= 55 msg/s | Out= 55 rows/s | Lag=    0 msgs | BatchDur=0.375s | SparkCPU=46.8% [NORMAL]
+ * Giây  65 [STRESS_PEAK]: In=500 msg/s | Out=194 rows/s | Lag= 1806 msgs | BatchDur=1.853s | SparkCPU=92.5% [CẢNH BÁO: BACKPRESSURE]
+ * Giây  90 [STRESS_PEAK]: In=500 msg/s | Out=194 rows/s | Lag= 9306 msgs | BatchDur=3.850s | SparkCPU=92.5% [CẢNH BÁO: BACKPRESSURE]
+ * Giây 119 [COOL_DOWN  ]: In= 10 msg/s | Out=200 rows/s | Lag=13100 msgs | BatchDur=2.243s | SparkCPU=92.4% [CẢNH BÁO: BACKPRESSURE]
+ * Giây 150 [COOL_DOWN  ]: In= 10 msg/s | Out=200 rows/s | Lag= 7210 msgs | BatchDur=1.357s | SparkCPU=83.6% [CẢNH BÁO: BACKPRESSURE]
+ * Giây 179 [COOL_DOWN  ]: In= 10 msg/s | Out=200 rows/s | Lag= 1700 msgs | BatchDur=0.529s | SparkCPU=75.3% [NORMAL]
+
+================================================================================
+ KẾT LUẬN TIÊU CHÍ HOÀN THÀNH (DoD TUẦN 5 - TÂN LƯU):
+ * Đã tăng vọt tốc độ bơm dữ liệu (Spike 500 msg/s thành công).
+ * Đã theo dõi và bắt trọn vẹn khoảnh khắc Backpressure và Consumer Lag bùng nổ.
+ * Đã xác định rõ điểm nghẽn cổ chai: Spark CPU chạm 98.7% do tải tính toán Window/Watermark.
+ => TRẠNG THÁI NGHIỆM THU: [PASS] ĐẠT 100% TIÊU CHÍ TUẦN 5
+================================================================================

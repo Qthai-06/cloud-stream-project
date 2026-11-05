@@ -35,6 +35,28 @@ EVENT_SCHEMA = StructType(
 )
 
 
+<<<<<<< HEAD
+=======
+def load_config() -> dict[str, Any]:
+    with CONFIG_PATH.open(encoding="utf-8") as config_file:
+        return yaml.safe_load(config_file)
+
+
+def open_database_connection(database: dict[str, Any]) -> Any:
+    password = database.get("password")
+    if password is None:
+        raise KeyError("Missing database password in DB_PASSWORD or pipeline_config.yaml")
+
+    return psycopg2.connect(
+        host=database["host"],
+        port=database["port"],
+        dbname=database["name"],
+        user=database["user"],
+        password=password,
+    )
+
+
+>>>>>>> 9f6d3db92409b42661d2166f607bbd22bc50037f
 def create_database_table(database: dict[str, Any]) -> None:
     schema_path = PROJECT_ROOT / "configs" / "database_schema.sql"
     schema = schema_path.read_text(encoding="utf-8")
@@ -163,13 +185,31 @@ def main() -> None:
     config = load_config()
     database = config["database"]
     streaming = config["streaming"]
+    database = {
+        **database,
+        "host": os.getenv("DB_HOST", database["host"]),
+        "port": int(os.getenv("DB_PORT", database["port"])),
+        "name": os.getenv("DB_NAME", database["name"]),
+        "user": os.getenv("DB_USER", database["user"]),
+        "password": os.getenv("DB_PASSWORD", database.get("password")),
+        "table": os.getenv("DB_TABLE", database.get("table", "sensor_window_metrics")),
+    }
+    kafka = config["kafka"]
+    kafka = {
+        **kafka,
+        "bootstrap_servers": os.getenv(
+            "KAFKA_BOOTSTRAP_SERVERS", kafka["bootstrap_servers"]
+        ),
+    }
+    checkpoint_location = os.getenv(
+        "CHECKPOINT_LOCATION", streaming["checkpoint_location"]
+    )
     validate_windows_runtime()
     spark = create_spark_session()
     spark.sparkContext.setLogLevel("WARN")
 
     try:
         create_database_table(database)
-        kafka = config["kafka"]
         events = (
             spark.readStream.format("kafka")
             .option("kafka.bootstrap.servers", kafka["bootstrap_servers"])
@@ -210,7 +250,11 @@ def main() -> None:
             windowed.writeStream.outputMode("append")
             .option(
                 "checkpointLocation",
-                str(PROJECT_ROOT / streaming["checkpoint_location"]),
+                str(
+                    Path(checkpoint_location)
+                    if Path(checkpoint_location).is_absolute()
+                    else PROJECT_ROOT / checkpoint_location
+                ),
             )
             .foreachBatch(lambda batch, batch_id: write_batch(batch, batch_id, database))
             .start()

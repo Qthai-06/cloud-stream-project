@@ -1,0 +1,13 @@
+================================================================================
+ KHỞI CHẠY BỘ GIẢ LẬP METRICS SPARK STREAMING (PORT 8000) - TÂN LƯU (TUẦN 4)
+ Endpoint: http://localhost:8000/metrics
+ Tốc độ mô phỏng: 10 msg/s | Late data: 20% | Checkpoint commit ms
+ Chế độ: Chạy 5 batches rồi hoàn tất.
+================================================================================
+[SPARK STREAMING] Batch 1: 11 rows | duration=0.169s | checkpoint=0.032s | throughput=65.1 rows/s | late_events=0
+[SPARK STREAMING] Batch 2: 10 rows | duration=0.197s | checkpoint=0.049s | throughput=50.8 rows/s | late_events=0
+[SPARK STREAMING] Batch 3: 10 rows | duration=0.175s | checkpoint=0.041s | throughput=57.1 rows/s | late_events=0
+[SPARK STREAMING] Batch 4: 9 rows | duration=0.244s | checkpoint=0.043s | throughput=36.9 rows/s | late_events=0
+[SPARK STREAMING] Batch 5: 10 rows | duration=0.240s | checkpoint=0.032s | throughput=41.7 rows/s | late_events=0
+
+[HOÀN TẤT] Đã chạy xong 5 batches kiểm thử thành công!

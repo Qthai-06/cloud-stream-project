@@ -1,5 +1,11 @@
 # Tuần 1 - 2
 
+> **Tài liệu tham khảo lịch sử:** file này ghi lại kế hoạch thiết kế ban đầu.
+> Khi chạy project hiện tại, hãy dùng [README.md](../README.md) và
+> [Demo.md](./Demo.md). Runtime hiện tại dùng Spark chạy trong Docker và
+> PostgreSQL; không triển khai ClickHouse hoặc Spark local theo hướng dẫn
+> cũ bên dưới.
+
 ### BƯỚC 1: LỰA CHỌN ENGINE – NÊN CHỌN SPARK HAY FLINK?
 
 Đối với Đề tài 16 (yêu cầu đo P95 Latency, kiểm tra Watermark, Crash-Recovery với Checkpoint và đối chiếu kết quả Batch/Stream):
@@ -77,7 +83,11 @@ cloud-stream-project/
 ├── .env.example
 ├── .env
 ├── .gitignore
+<<<<<<< HEAD:Minh_Tan_Build.md
 ├── docker-compose.yml          # Đã có: Redpanda và Postgres
+=======
+├── docker-compose.yml          # Redpanda, PostgreSQL, monitoring và Spark
+>>>>>>> 9f6d3db92409b42661d2166f607bbd22bc50037f:docs/Minh_Tan_Build.md
 ├── requirements.txt
 ├── README.md
 │
@@ -674,7 +684,11 @@ Pipeline Tuần 4 dùng khóa chính trên ba cột logic và `ON CONFLICT DO UP
      --port 5432 `
      --user admin `
      --database app_db `
+<<<<<<< HEAD:Minh_Tan_Build.md
      --password "YOUR_PASSWORD"
+=======
+     --password $env:POSTGRES_PASSWORD
+>>>>>>> 9f6d3db92409b42661d2166f607bbd22bc50037f:docs/Minh_Tan_Build.md
    ```
 
    Nếu chạy trong CMD, có thể dùng file SQL:
