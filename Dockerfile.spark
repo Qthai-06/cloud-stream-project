@@ -3,10 +3,10 @@ FROM python:3.10-slim
 WORKDIR /app
 
 # 1. CÀI ĐẶT MÔI TRƯỜNG THỰC THI CHO SPARK (BẮT BUỘC)
-# Cài đặt OpenJRE vì lõi của Apache Spark được viết bằng Scala/Java, 
+# Cài đặt OpenJRE vì lõi của Apache Spark được viết bằng Scala/Java,
 # thư viện pyspark chỉ là lớp vỏ bọc giao tiếp (wrapper).
 RUN apt-get update && \
-    apt-get install -y default-jre-headless && \
+    apt-get install -y default-jre-headless procps && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -21,15 +21,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ /app/src/
 COPY configs/ /app/configs/
 
-# 4. CHUẨN BỊ ĐIỂM NEO CHECKPOINT
-# Tạo sẵn thư mục rỗng bên trong container để docker-compose ánh xạ (mount) ổ cứng vào
-RUN mkdir -p /opt/workspace/checkpoints
+# 4. CHUẨN BỊ ĐIỂM NEO CHECKPOINT VÀ USER BẢO MẬT
+# Tạo sẵn thư mục rỗng bên trong container để docker-compose ánh xạ (mount) ổ cứng vào.
+# Chạy với non-root user để giảm attack surface (bảo mật container).
+RUN useradd --uid 1001 --no-create-home --shell /bin/false spark && \
+    mkdir -p /opt/workspace/checkpoints /app/logs && \
+    chown -R spark:spark /app /opt/workspace
 
 ENV PYTHONPATH=/app
 
-<<<<<<< HEAD
+# Chuyển sang non-root user trước khi khởi chạy
+USER spark
+
 # 5. LỆNH KHỞI CHẠY PIPELINE CHÍNH THỨC
-=======
-# 5. LỆNH KHỞI CHẠY (ENTRYPOINT)
->>>>>>> 9f6d3db92409b42661d2166f607bbd22bc50037f
 CMD ["python", "src/streaming/spark_pipeline.py"]

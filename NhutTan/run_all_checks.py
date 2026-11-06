@@ -13,53 +13,38 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 NHUT_TAN_DIR = PROJECT_ROOT / "NhutTan"
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 # Đảm bảo sys.path đầy đủ
 for p in [str(PROJECT_ROOT), str(NHUT_TAN_DIR)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-try:
-    from NhutTan.src.record_baseline import (
-        generate_reference_baseline,
-        save_baseline,
-        print_summary_table,
-    )
-    from NhutTan.src.spark_metrics_listener import MetricsCollector, PROMETHEUS_AVAILABLE
-    from NhutTan.src.stress_test_backpressure import (
-        simulate_stress_test_timeline,
-        generate_container_stress_comparison,
-        save_stress_test_results,
-    )
-    from NhutTan.src.generate_bottleneck_chart import (
-        render_backpressure_chart,
-        render_resource_comparison_chart,
-    )
-    from NhutTan.src.build_exact_format_reports import build_noidung_tanluu, build_code_tanluu, OUT_NOIDUNG as OUTPUT_DOCX
-    def build_report_docx():
-        build_noidung_tanluu()
-        build_code_tanluu()
-        return True
-except ImportError:
-    from src.record_baseline import (  # type: ignore
-        generate_reference_baseline,
-        save_baseline,
-        print_summary_table,
-    )
-    from src.spark_metrics_listener import MetricsCollector, PROMETHEUS_AVAILABLE  # type: ignore
-    from src.stress_test_backpressure import (  # type: ignore
-        simulate_stress_test_timeline,
-        generate_container_stress_comparison,
-        save_stress_test_results,
-    )
-    from src.generate_bottleneck_chart import (  # type: ignore
-        render_backpressure_chart,
-        render_resource_comparison_chart,
-    )
-    from src.build_exact_format_reports import build_noidung_tanluu, build_code_tanluu, OUT_NOIDUNG as OUTPUT_DOCX  # type: ignore
-    def build_report_docx():
-        build_noidung_tanluu()
-        build_code_tanluu()
-        return True
+from NhutTan.src.record_baseline import (
+    generate_reference_baseline,
+    save_baseline,
+    print_summary_table,
+)
+from NhutTan.src.spark_metrics_listener import MetricsCollector, PROMETHEUS_AVAILABLE
+from NhutTan.src.stress_test_backpressure import (
+    simulate_stress_test_timeline,
+    generate_container_stress_comparison,
+    save_stress_test_results,
+)
+from NhutTan.src.generate_bottleneck_chart import (
+    render_backpressure_chart,
+    render_resource_comparison_chart,
+)
+
+OUTPUT_DOCX = NHUT_TAN_DIR / "ket_qua" / "NoiDung_TanLuu.docx"
+CODE_DOCX = NHUT_TAN_DIR / "ket_qua" / "Code_TanLuu.docx"
+
+
+def build_report_docx() -> bool:
+    """Verify report artifacts without requiring the removed report builder."""
+    return OUTPUT_DOCX.exists() and CODE_DOCX.exists()
 
 
 def log_step(name: str):
@@ -82,7 +67,6 @@ def check_files_exist():
         NHUT_TAN_DIR / "src" / "spark_metrics_listener.py",
         NHUT_TAN_DIR / "src" / "stress_test_backpressure.py",
         NHUT_TAN_DIR / "src" / "generate_bottleneck_chart.py",
-        NHUT_TAN_DIR / "src" / "build_exact_format_reports.py",
         NHUT_TAN_DIR / "BaoCao_Tuan5_EpTai_TanLuu.md",
         NHUT_TAN_DIR / "BaoCao_Tuan1_den_Tuan5_TanLuu.md",
     ]
@@ -200,7 +184,9 @@ def test_generate_charts():
 
 def test_reports():
     log_step("7. Kiểm tra trạng thái các file Báo cáo (Word & Markdown)")
-    build_report_docx()
+    if not build_report_docx():
+        print("  [X] Thiếu một hoặc nhiều file báo cáo Word trong ket_qua/")
+        return False
     md_files = [
         NHUT_TAN_DIR / "BaoCao_Tuan5_EpTai_TanLuu.md",
         NHUT_TAN_DIR / "BaoCao_Tuan1_den_Tuan5_TanLuu.md",

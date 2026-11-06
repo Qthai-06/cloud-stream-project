@@ -1,9 +1,5 @@
 kafka:
-<<<<<<< HEAD
   bootstrap_servers: "redpanda:29092"
-=======
-  bootstrap_servers: "localhost:19092"
->>>>>>> 9f6d3db92409b42661d2166f607bbd22bc50037f
   topic_name: "iot-sensor-events"
 
 generator:
@@ -28,8 +24,5 @@ database:
   port: 15432
   user: "admin"
   name: "app_db"
-<<<<<<< HEAD
   password: "${POSTGRES_PASSWORD}"
-=======
->>>>>>> 9f6d3db92409b42661d2166f607bbd22bc50037f
   table: "sensor_window_metrics"

@@ -22,14 +22,28 @@ def load_config(config_path: Path = CONFIG_PATH) -> dict[str, Any]:
     )
 
     database = config.setdefault("database", {})
-    database["host"] = os.getenv("POSTGRES_HOST", database.get("host", "127.0.0.1"))
-    database["port"] = int(os.getenv("POSTGRES_PORT", database.get("port", 5432)))
-    database["user"] = os.getenv("POSTGRES_USER", database.get("user", "admin"))
-    database["name"] = os.getenv("POSTGRES_DB", database.get("name", "app_db"))
+    database["host"] = os.getenv(
+        "DB_HOST",
+        os.getenv("POSTGRES_HOST", database.get("host", "127.0.0.1")),
+    )
+    database["port"] = int(
+        os.getenv("DB_PORT", os.getenv("POSTGRES_PORT", database.get("port", 5432)))
+    )
+    database["user"] = os.getenv(
+        "DB_USER", os.getenv("POSTGRES_USER", database.get("user", "admin"))
+    )
+    database["name"] = os.getenv(
+        "DB_NAME", os.getenv("POSTGRES_DB", database.get("name", "app_db"))
+    )
     configured_password = database.get("password", "")
     database["password"] = os.getenv(
-        "POSTGRES_PASSWORD",
-        "" if configured_password == "${POSTGRES_PASSWORD}" else configured_password,
+        "DB_PASSWORD",
+        os.getenv(
+            "POSTGRES_PASSWORD",
+            ""
+            if configured_password == "${POSTGRES_PASSWORD}"
+            else configured_password,
+        ),
     )
     database["table"] = database.get("table", "sensor_window_metrics")
     if not database["password"]:

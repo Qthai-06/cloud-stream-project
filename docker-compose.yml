@@ -56,13 +56,12 @@ services:
         condition: service_healthy
     networks:
       - stream-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
 
-<<<<<<< HEAD
-  # ==========================================
-  # 2. RDBMS: POSTGRESQL (OLTP)
-  # ==========================================
-=======
->>>>>>> 9f6d3db92409b42661d2166f607bbd22bc50037f
   postgres:
     image: postgres:16.4-alpine
     container_name: postgres
@@ -77,19 +76,12 @@ services:
       - ./volumes/postgres:/var/lib/postgresql/data
     networks:
       - stream-network
-<<<<<<< HEAD
-
-  # ==========================================
-  # 3. EVENT GENERATOR (Tích hợp nội bộ)
-  # ==========================================
-=======
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 10s
       timeout: 5s
       retries: 12
 
->>>>>>> 9f6d3db92409b42661d2166f607bbd22bc50037f
   data-generator:
     build:
       context: .
@@ -105,15 +97,13 @@ services:
       - stream-network
     volumes:
       - ./configs:/app/configs:ro
-      - ./checkpoints:/opt/workspace/checkpoints
       - ./logs:/app/logs
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
 
-<<<<<<< HEAD
-  # ==========================================
-  # 4. INFRA METRICS MONITORING (Giám sát phần cứng)
-  # ==========================================
-=======
->>>>>>> 9f6d3db92409b42661d2166f607bbd22bc50037f
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     container_name: cadvisor
@@ -127,12 +117,12 @@ services:
       - /var/lib/docker:/var/lib/docker:ro
     networks:
       - stream-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
 
-<<<<<<< HEAD
-# ==========================================
-  # 5. STREAMING ENGINE (Spark Structured Streaming)
-  # ==========================================
-=======
   prometheus:
     image: prom/prometheus:v2.54.1
     container_name: prometheus
@@ -152,13 +142,18 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
 
   grafana:
     image: grafana/grafana:11.2.0
     container_name: grafana
     restart: unless-stopped
     ports:
-      - "13000:3000"
+      - "13300:3000"
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}}
@@ -176,8 +171,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
 
->>>>>>> 9f6d3db92409b42661d2166f607bbd22bc50037f
   stream-processor:
     build:
       context: .
@@ -185,15 +184,6 @@ services:
     container_name: spark-processor
     restart: unless-stopped
     environment:
-<<<<<<< HEAD
-      - KAFKA_BOOTSTRAP_SERVERS=redpanda:29092
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-<<<<<<< HEAD
-=======
       KAFKA_BOOTSTRAP_SERVERS: redpanda:29092
       DB_HOST: postgres
       DB_PORT: "5432"
@@ -201,58 +191,24 @@ services:
       DB_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
       DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       CHECKPOINT_LOCATION: /opt/workspace/checkpoints/spark_pipeline
->>>>>>> 9f6d3db92409b42661d2166f607bbd22bc50037f
+      CHECKPOINT_ROOT: /opt/workspace/checkpoints
     volumes:
       - ./checkpoints:/opt/workspace/checkpoints
-=======
-      - CHECKPOINT_ROOT=/opt/workspace/checkpoints
-    volumes:
-      - ./checkpoints:/opt/workspace/checkpoints # Ánh xạ điểm neo trạng thái
       - ./logs:/app/logs
       - ./configs:/app/configs:ro
->>>>>>> fix/week6-pipeline-verification
     depends_on:
-<<<<<<< HEAD
-      - redpanda
-      - postgres
-=======
       redpanda:
         condition: service_healthy
       postgres:
         condition: service_healthy
->>>>>>> 9f6d3db92409b42661d2166f607bbd22bc50037f
     networks:
       - stream-network
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
 
-<<<<<<< HEAD
-=======
-  # ==========================================
-  # 6. LATE-DATA AUDIT ROUTER
-  # ==========================================
-  late-data-router:
-    build:
-      context: .
-      dockerfile: Dockerfile.spark
-    container_name: late-data-router
-    command: ["python", "src/streaming/late_data_router.py"]
-    environment:
-      - KAFKA_BOOTSTRAP_SERVERS=redpanda:29092
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-      - CHECKPOINT_ROOT=/opt/workspace/checkpoints
-    volumes:
-      - ./checkpoints:/opt/workspace/checkpoints
-      - ./logs:/app/logs
-      - ./configs:/app/configs:ro
-    depends_on:
-      - redpanda
-    networks:
-      - stream-network
-
->>>>>>> fix/week6-pipeline-verification
 networks:
   stream-network:
     name: stream-network

@@ -1,6 +1,5 @@
 # Đề tài 16 — Cloud Stream IoT
 
-<<<<<<< HEAD
 Kho mã nguồn này xây dựng một pipeline xử lý sự kiện IoT (nhiệt độ và độ ẩm)
 để **đo lường độ trễ đầu cuối, độ chính xác khi có dữ liệu đến muộn và hành vi
 backpressure**. Đây không phải ứng dụng tối ưu cho trường hợp bình thường:
@@ -36,7 +35,8 @@ PostgreSQL
         |
         +--> Prometheus/Grafana (throughput, lag, checkpoint, latency)
         +--> cAdvisor (CPU, RAM, I/O container)
-=======
+```
+
 Hệ thống này mô phỏng một pipeline xử lý dữ liệu IoT theo thời gian thực:
 
 ```text
@@ -47,7 +47,6 @@ Event Generator -> Redpanda/Kafka -> Spark Structured Streaming -> PostgreSQL
                          |
                          v
                       Grafana
->>>>>>> 9f6d3db92409b42661d2166f607bbd22bc50037f
 ```
 
 Mục tiêu của project là quan sát throughput, late data, watermark,
@@ -74,8 +73,6 @@ nhãn này để quyết định late data; quyết định phải dựa trên e
 watermark.
 
 ## 2. Thành phần và cổng
-
-<<<<<<< HEAD
 | Thành phần | Vai trò | Cổng host |
 |---|---|---:|
 | Redpanda | Kafka-compatible broker | `19092` |
@@ -85,10 +82,9 @@ watermark.
 | Event generator | Sinh dữ liệu IoT | nội bộ |
 | cAdvisor | CPU/RAM/I/O container | `8080` |
 | Prometheus gốc | Metrics hạ tầng | `19090` |
-| Grafana gốc | Monitoring hạ tầng | `13000` |
+| Grafana gốc | Monitoring hạ tầng | `13300` |
 | NhutTan Prometheus | Metrics cho dashboard demo | `9090` |
 | NhutTan Grafana | Dashboard dựng sẵn | `3000` |
-=======
 Mọi event được kiểm tra độc lập bằng
 [`src/generator/event_schema.py`](./src/generator/event_schema.py) trước khi
 được serialize và gửi vào Kafka. Validator kiểm tra các field bắt buộc, kiểu
@@ -97,28 +93,12 @@ Spark Structured Streaming dùng cùng định nghĩa schema để tránh lệch
 giữa producer và consumer.
 
 ## Thành phần hạ tầng
->>>>>>> fix/week6-pipeline-verification
 
-<<<<<<< HEAD
-| Thành phần | Vai trò | Giới hạn / trạng thái |
-|---|---|---|
-| Redpanda | Message broker tương thích Kafka | 1 CPU, giới hạn RAM `1.5G`; Redpanda tự giới hạn bộ nhớ khả dụng ở `1G` |
-| Redpanda Console | Quan sát topic, partition và consumer | Đã có trong Compose |
-| PostgreSQL | Kho nhận kết quả streaming và integrity checks | Container `postgres` |
-| Event Generator | Phát sự kiện IoT liên tục | 10 msg/s, chạy nội bộ Docker |
-| cAdvisor | Đo CPU, RAM, filesystem và network của container | Đã có trong Compose |
-| Spark Structured Streaming | Window, watermark, checkpoint và PostgreSQL sink | Service `stream-processor` trong Compose |
-| Prometheus/Grafana | Lưu và trực quan hóa metrics | Hạng mục tích hợp tiếp theo; chưa có service trong Compose hiện tại |
-
-PostgreSQL là database duy nhất của pipeline và được dùng bởi cả sink streaming
-và bộ kiểm tra integrity.
-=======
 Compose gốc và bộ monitoring `NhutTan` dùng network `stream-network`. Hai bộ
 monitoring dùng container name riêng (`prometheus`/`grafana` và
 `nhuttan-prometheus`/`nhuttan-grafana`) nên có thể chạy đồng thời.
 
 ## 3. Yêu cầu và cấu hình secret
->>>>>>> 9f6d3db92409b42661d2166f607bbd22bc50037f
 
 Yêu cầu:
 
@@ -137,11 +117,6 @@ Copy-Item .env.example .env
 
 Đặt password riêng trong `.env`:
 
-<<<<<<< HEAD
-Các biến `POSTGRES_USER`, `POSTGRES_PASSWORD` và `POSTGRES_DB` được Compose
-đọc từ file `.env`. Không đưa mật khẩu thật vào Git. Nếu repository chưa có
-`.env`, tạo file cục bộ với các giá trị phù hợp trước khi khởi chạy.
-=======
 ```env
 POSTGRES_USER=admin
 POSTGRES_PASSWORD=<postgres-password>
@@ -149,7 +124,6 @@ POSTGRES_DB=app_db
 GRAFANA_ADMIN_USER=admin
 GRAFANA_ADMIN_PASSWORD=<grafana-password>
 ```
->>>>>>> 9f6d3db92409b42661d2166f607bbd22bc50037f
 
 Không commit `.env`, backup database, checkpoint hoặc dữ liệu trong `volumes/`.
 Nếu thư mục PostgreSQL đã có dữ liệu, đổi `POSTGRES_PASSWORD` trong `.env`
@@ -170,12 +144,11 @@ docker compose up -d --build
 docker compose ps -a
 ```
 
-<<<<<<< HEAD
 `down` không xóa các volume bind mount trong `volumes/`. Dữ liệu Redpanda và
 PostgreSQL vì thế vẫn tồn tại giữa các lần khởi động. Chỉ xóa dữ liệu thí
 nghiệm sau khi đã lưu kết quả và xác nhận không cần khôi phục.
 
-### 3. Kiểm tra trạng thái
+### A. Kiểm tra trạng thái
 
 ```powershell
 docker compose ps
@@ -367,20 +340,6 @@ Metrics cần được lưu cùng dữ liệu thô để có thể tái lập bi
 ## Dọn dẹp
 
 Dừng stack nhưng giữ dữ liệu volume:
-=======
-Các service cần ở trạng thái `Up` hoặc `healthy`:
-
-```text
-redpanda
-postgres
-event-generator
-spark-processor
-prometheus
-grafana
-```
-
-Kiểm tra broker:
->>>>>>> 9f6d3db92409b42661d2166f607bbd22bc50037f
 
 ```powershell
 docker exec redpanda rpk cluster health --api-urls localhost:9644
@@ -417,7 +376,7 @@ qua window. Vì vậy chạy vài giây có thể vẫn thấy `0` dòng.
 ## 5. Mở giao diện
 
 - Redpanda Console: http://localhost:18080
-- Grafana hạ tầng: http://localhost:13000
+- Grafana hạ tầng: http://localhost:13300
 - Prometheus hạ tầng: http://localhost:19090
 - cAdvisor: http://localhost:8080
 
@@ -550,26 +509,21 @@ docker compose -f .\NhutTan\docker-compose.monitoring.yml down
 docker compose down --remove-orphans
 ```
 
-<<<<<<< HEAD
 Chỉ sau khi đã xuất metrics, log, kết quả PostgreSQL và checkpoint cần thiết,
 mới xóa dữ liệu thí nghiệm trong các thư mục bind mount. Không commit dữ liệu
 runtime trong `volumes/` hoặc bất kỳ secret nào vào repository.
-=======
 Chỉ xóa dữ liệu sau khi đã lưu kết quả:
->>>>>>> 9f6d3db92409b42661d2166f607bbd22bc50037f
 
 - `volumes/`
 - `checkpoints/`
 - `backups/`
 - `NhutTan/ket_qua/`
 
-<<<<<<< HEAD
 Compose đã có Redpanda, Redpanda Console, PostgreSQL, event generator và
 cAdvisor với các giới hạn tài nguyên phục vụ thí nghiệm. Spark Structured
 Streaming, checkpoint bền vững, Prometheus/Grafana, sink hoàn chỉnh và các
 benchmark vẫn là các hạng mục cần triển khai tiếp theo theo kế hoạch nghiên
 cứu.
-=======
 ## 12. Cấu trúc repository
 
 ```text
@@ -597,4 +551,3 @@ Tài liệu chạy từng bước: [docs/Demo.md](./docs/Demo.md).
 - Restore PostgreSQL: có script và đã kiểm thử bằng backup custom format.
 - Stress-test: phần dashboard có metrics mô phỏng; cần ghi rõ điều này trong
   báo cáo nếu chưa dùng exporter Spark thực tế.
->>>>>>> 9f6d3db92409b42661d2166f607bbd22bc50037f

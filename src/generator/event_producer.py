@@ -1,4 +1,5 @@
 """Generate IoT sensor events and publish them to Redpanda."""
+import logging
 import random
 import json
 import yaml
@@ -9,13 +10,19 @@ from kafka import KafkaProducer
 
 from src.generator.event_schema import validate_event
 
+LOGGER = logging.getLogger(__name__)
+
 
 def load_config(config_path="configs/pipeline_config.yaml"):
     with open(file=config_path, mode="r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
-def generator_sensor_event(devices, late_per, min_delay, max_delay):
+def _on_send_error(exc: Exception) -> None:
+    LOGGER.error("Kafka send failed: %s", exc)
+
+
+def generate_sensor_event(devices, late_per, min_delay, max_delay):
     device_id = random.choice(devices)
     now = datetime.now(timezone.utc)
 
@@ -65,7 +72,7 @@ def main():
 
     try:
         while True:
-            device_id, event = generator_sensor_event(
+            device_id, event = generate_sensor_event(
                 gen_config["devices"],
                 gen_config["late_data_percent"],
                 gen_config["min_delay_sec"],
@@ -73,7 +80,7 @@ def main():
             )
 
             # Gửi tín hiệu vào Kafka (device_id làm Partition key)
-            producer.send(topic,key=device_id,value=event)
+            producer.send(topic,key=device_id,value=event).add_errback(_on_send_error)
 
             total_sent += 1
             if event["is_late_simulated"]:

@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+import psycopg2.pool
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import avg, col, count, from_json, window
 
@@ -16,51 +17,65 @@ from src.utils.db_connector import open_database_connection
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 KAFKA_CONNECTOR_PACKAGE = "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1"
 LOGGER = logging.getLogger(__name__)
-
 EVENT_SCHEMA = build_spark_event_schema()
 
 
-<<<<<<< HEAD
-=======
-def load_config() -> dict[str, Any]:
-    with CONFIG_PATH.open(encoding="utf-8") as config_file:
-        return yaml.safe_load(config_file)
+class PsycopgConnectionPool:
+    """Thread-safe PostgreSQL connection pool backed by psycopg2.pool.ThreadedConnectionPool."""
+
+    def __init__(self, database: dict[str, Any], minconn: int = 1, maxconn: int = 4) -> None:
+        self.table = database["table"]
+        self._pool = psycopg2.pool.ThreadedConnectionPool(
+            minconn,
+            maxconn,
+            host=database["host"],
+            port=database["port"],
+            dbname=database["name"],
+            user=database["user"],
+            password=database["password"],
+        )
+
+    def getconn(self):
+        """Acquire a connection from the pool."""
+        return self._pool.getconn()
+
+    def putconn(self, conn) -> None:
+        """Return a connection to the pool."""
+        self._pool.putconn(conn)
+
+    def closeall(self) -> None:
+        """Close all connections in the pool."""
+        self._pool.closeall()
 
 
-def open_database_connection(database: dict[str, Any]) -> Any:
-    password = database.get("password")
-    if password is None:
-        raise KeyError("Missing database password in DB_PASSWORD or pipeline_config.yaml")
-
-    return psycopg2.connect(
-        host=database["host"],
-        port=database["port"],
-        dbname=database["name"],
-        user=database["user"],
-        password=password,
-    )
+def create_connection_pool(database: dict[str, Any]) -> PsycopgConnectionPool:
+    """Create and return a thread-safe connection pool for the given database config."""
+    return PsycopgConnectionPool(database, minconn=1, maxconn=4)
 
 
->>>>>>> 9f6d3db92409b42661d2166f607bbd22bc50037f
+def close_connection_pool(pool: PsycopgConnectionPool) -> None:
+    """Close all connections held by the pool."""
+    pool.closeall()
+
+
 def create_database_table(database: dict[str, Any]) -> None:
     schema_path = PROJECT_ROOT / "configs" / "database_schema.sql"
-    schema = schema_path.read_text(encoding="utf-8")
     connection = open_database_connection(database)
     try:
         with connection:
             with connection.cursor() as cursor:
-                cursor.execute(schema)
+                cursor.execute(schema_path.read_text(encoding="utf-8"))
     finally:
         connection.close()
 
 
-def write_batch(batch_df: DataFrame, batch_id: int, database: dict[str, Any]) -> None:
+def write_batch(batch_df: DataFrame, batch_id: int, pool: PsycopgConnectionPool) -> None:
     rows = batch_df.collect()
     if not rows:
         return
 
     statement = f"""
-        INSERT INTO {database["table"]} (
+        INSERT INTO {pool.table} (
             window_start, window_end, device_id, event_count,
             average_temperature, average_humidity
         ) VALUES (%s, %s, %s, %s, %s, %s)
@@ -71,7 +86,7 @@ def write_batch(batch_df: DataFrame, batch_id: int, database: dict[str, Any]) ->
             average_humidity = EXCLUDED.average_humidity,
             updated_at = CURRENT_TIMESTAMP
     """
-    connection = open_database_connection(database)
+    connection = pool.getconn()
     try:
         with connection:
             with connection.cursor() as cursor:
@@ -90,7 +105,7 @@ def write_batch(batch_df: DataFrame, batch_id: int, database: dict[str, Any]) ->
                     ],
                 )
     finally:
-        connection.close()
+        pool.putconn(connection)
     LOGGER.info("Batch %s: ghi %s khung thoi gian vao PostgreSQL", batch_id, len(rows))
 
 
@@ -105,7 +120,6 @@ def create_spark_session() -> SparkSession:
 
 
 def build_windowed_events(events: DataFrame, streaming: dict[str, Any]) -> DataFrame:
-    """Aggregate parsed events into event-time windows per device."""
     return (
         events.withWatermark("event_time", streaming["watermark_delay"])
         .groupBy(
@@ -129,7 +143,6 @@ def build_windowed_events(events: DataFrame, streaming: dict[str, Any]) -> DataF
 
 
 def resolve_checkpoint_path(configured_path: str) -> Path:
-    """Resolve a checkpoint name inside the persistent checkpoint mount."""
     path = Path(configured_path)
     if path.is_absolute():
         return path
@@ -139,62 +152,13 @@ def resolve_checkpoint_path(configured_path: str) -> Path:
     return checkpoint_root / path.name
 
 
-def has_valid_winutils(target: Path) -> bool:
-    if not target.is_file():
-        return False
-    try:
-        with target.open("rb") as handle:
-            return handle.read(2) == b"MZ"
-    except OSError:
-        return False
-
-
 def validate_windows_runtime() -> None:
     if os.name != "nt":
         return
-
     java_home = os.environ.get("JAVA_HOME")
-    if java_home:
-        java_home = str(Path(java_home).resolve())
-    else:
-        java_candidates = [
-            Path("C:/Program Files/Java"),
-            Path("C:/Program Files/Eclipse Adoptium"),
-        ]
-        for base in java_candidates:
-            if not base.exists():
-                continue
-            for candidate in sorted(
-                base.glob("jdk-17*"), key=lambda item: item.name, reverse=True
-            ):
-                if (candidate / "bin" / "java.exe").is_file():
-                    java_home = str(candidate)
-                    break
-            if java_home:
-                break
-
     if not java_home:
-        raise RuntimeError(
-            "Java 17 is required. Install OpenJDK 17 and set JAVA_HOME before running Spark."
-        )
-
-    os.environ["JAVA_HOME"] = java_home
-    os.environ["PATH"] = str(Path(java_home) / "bin") + os.pathsep + os.environ.get(
-        "PATH", ""
-    )
-
-    hadoop_home = os.environ.get("HADOOP_HOME") or "C:/hadoop"
-    winutils = Path(hadoop_home) / "bin" / "winutils.exe"
-    if not has_valid_winutils(winutils):
-        raise RuntimeError(
-            "Missing valid winutils.exe. Download a Windows Hadoop build for Hadoop 3.3.x "
-            f"and place it at {winutils}. Then set HADOOP_HOME to {hadoop_home}."
-        )
-
-    os.environ["HADOOP_HOME"] = str(Path(hadoop_home))
-    os.environ["PATH"] = str(Path(hadoop_home) / "bin") + os.pathsep + os.environ.get(
-        "PATH", ""
-    )
+        raise RuntimeError("Java 17 is required. Set JAVA_HOME before running Spark.")
+    os.environ["JAVA_HOME"] = str(Path(java_home).resolve())
 
 
 def main() -> None:
@@ -203,22 +167,24 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(message)s",
     )
     config = load_config()
-    database = config["database"]
     streaming = config["streaming"]
+    database_config = config["database"]
     database = {
-        **database,
-        "host": os.getenv("DB_HOST", database["host"]),
-        "port": int(os.getenv("DB_PORT", database["port"])),
-        "name": os.getenv("DB_NAME", database["name"]),
-        "user": os.getenv("DB_USER", database["user"]),
-        "password": os.getenv("DB_PASSWORD", database.get("password")),
-        "table": os.getenv("DB_TABLE", database.get("table", "sensor_window_metrics")),
+        **database_config,
+        "host": os.getenv("DB_HOST", database_config["host"]),
+        "port": int(os.getenv("DB_PORT", database_config["port"])),
+        "name": os.getenv("DB_NAME", database_config["name"]),
+        "user": os.getenv("DB_USER", database_config["user"]),
+        "password": os.getenv("DB_PASSWORD", database_config.get("password")),
+        "table": os.getenv(
+            "DB_TABLE", database_config.get("table", "sensor_window_metrics")
+        ),
     }
-    kafka = config["kafka"]
+    kafka_config = config["kafka"]
     kafka = {
-        **kafka,
+        **kafka_config,
         "bootstrap_servers": os.getenv(
-            "KAFKA_BOOTSTRAP_SERVERS", kafka["bootstrap_servers"]
+            "KAFKA_BOOTSTRAP_SERVERS", kafka_config["bootstrap_servers"]
         ),
     }
     checkpoint_location = os.getenv(
@@ -228,13 +194,15 @@ def main() -> None:
     spark = create_spark_session()
     spark.sparkContext.setLogLevel("WARN")
 
+    pool = create_connection_pool(database)
     try:
         create_database_table(database)
         events = (
             spark.readStream.format("kafka")
             .option("kafka.bootstrap.servers", kafka["bootstrap_servers"])
             .option("subscribe", kafka["topic_name"])
-            .option("startingOffsets", "latest")
+            # earliest: processar todos mensagens existentes; ao reiniciar com checkpoint, Spark usa o offset salvo automaticamente
+            .option("startingOffsets", "earliest")
             .load()
             .select(from_json(col("value").cast("string"), EVENT_SCHEMA).alias("event"))
             .select("event.*")
@@ -246,22 +214,14 @@ def main() -> None:
                 & col("humidity").isNotNull()
             )
         )
-        windowed = build_windowed_events(events, streaming)
         query = (
-            windowed.writeStream.outputMode("update")
+            build_windowed_events(events, streaming)
+            .writeStream.outputMode("update")
             .option(
                 "checkpointLocation",
-<<<<<<< HEAD
-                str(
-                    Path(checkpoint_location)
-                    if Path(checkpoint_location).is_absolute()
-                    else PROJECT_ROOT / checkpoint_location
-                ),
-=======
-                str(resolve_checkpoint_path(streaming["checkpoint_location"])),
->>>>>>> fix/week6-pipeline-verification
+                str(resolve_checkpoint_path(checkpoint_location)),
             )
-            .foreachBatch(lambda batch, batch_id: write_batch(batch, batch_id, database))
+            .foreachBatch(lambda batch, batch_id: write_batch(batch, batch_id, pool))
             .start()
         )
         LOGGER.info("Pipeline dang chay. Nhan Ctrl+C de dung.")
@@ -270,6 +230,7 @@ def main() -> None:
         LOGGER.info("Dung pipeline.")
     finally:
         spark.stop()
+        close_connection_pool(pool)
 
 
 if __name__ == "__main__":

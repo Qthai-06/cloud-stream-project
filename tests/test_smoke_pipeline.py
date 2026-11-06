@@ -16,7 +16,7 @@ from unittest.mock import patch
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, from_json, window
 
-from src.generator.event_producer import generator_sensor_event
+from src.generator.event_producer import generate_sensor_event
 from src.generator.event_schema import EventValidationError, validate_event
 from src.streaming.late_data_router import duration_to_seconds, route_late_events
 from src.streaming.event_storage import append_jsonl, dead_letter_record, raw_event_record
@@ -54,13 +54,13 @@ class PipelineConfigurationTests(unittest.TestCase):
         self.assertEqual(config["database"]["password"], "test-password")
 
     def test_generator_emits_timezone_aware_timestamp(self) -> None:
-        _, event = generator_sensor_event(["sensor-A101"], 0, 0, 0)
+        _, event = generate_sensor_event(["sensor-A101"], 0, 0, 0)
         event_time = datetime.fromisoformat(event["event_time"])
         self.assertIsNotNone(event_time.tzinfo)
         self.assertEqual(event_time.tzinfo, timezone.utc)
 
     def test_event_schema_accepts_generated_event(self) -> None:
-        _, event = generator_sensor_event(["sensor-A101"], 0, 0, 0)
+        _, event = generate_sensor_event(["sensor-A101"], 0, 0, 0)
         validate_event(event)
 
     def test_event_schema_rejects_invalid_payload(self) -> None:
@@ -84,7 +84,7 @@ class PipelineConfigurationTests(unittest.TestCase):
         try:
             random.seed(20261104)
             late_count = sum(
-                generator_sensor_event(["sensor-A101"], expected_ratio, 30, 120)[
+                generate_sensor_event(["sensor-A101"], expected_ratio, 30, 120)[
                     1
                 ]["is_late_simulated"]
                 for _ in range(sample_size)

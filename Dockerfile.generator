@@ -9,6 +9,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ /app/src/
 COPY configs/ /app/configs/
 
+# Tạo non-root user để giảm attack surface (bảo mật container)
+RUN useradd --uid 1002 --no-create-home --shell /bin/false generator && \
+    mkdir -p /app/logs && \
+    chown -R generator:generator /app
+
 # Thiết lập PYTHONPATH để import không bị lỗi
 ENV PYTHONPATH=/app
+
+# Chuyển sang non-root user trước khi khởi chạy
+USER generator
+
 CMD ["python", "src/generator/event_producer.py"]

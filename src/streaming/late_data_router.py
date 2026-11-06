@@ -46,8 +46,9 @@ def route_late_events(
     if batch_df.isEmpty():
         return 0
 
-    late_df = batch_df.filter(col("event_time") < watermark_cutoff.replace(tzinfo=None))
+    late_df = batch_df.filter(col("event_time") < watermark_cutoff.replace(tzinfo=None)).cache()
     late_rows = late_df.collect()
+    late_df.unpersist()
     if not late_rows:
         return 0
 
@@ -186,7 +187,7 @@ def main() -> None:
                 batch.filter(col("event").isNotNull())
                 .select("event.*")
                 .withColumn("event_time", col("event_time").cast("timestamp"))
-            )
+            ).cache()
             late_count = route_late_events(
                 valid_batch,
                 batch_id,
@@ -194,10 +195,12 @@ def main() -> None:
                 watermark_seconds,
                 watermark_tracker.watermark,
             )
-            late_events = valid_batch.filter(
-                col("event_time") < watermark_tracker.watermark
-            )
-            accepted_events = valid_batch.exceptAll(late_events)
+            # Simple filter instead of wide exceptAll to avoid recomputing valid_batch twice.
+            accepted_events = valid_batch.filter(
+                col("event_time") >= watermark_tracker.watermark
+            ).cache()
+            accepted_rows = accepted_events.collect()
+            accepted_count = len(accepted_rows)
             append_jsonl(
                 accepted_events_path,
                 [
@@ -205,7 +208,7 @@ def main() -> None:
                         "batch_id": batch_id,
                         "event": row.asDict(recursive=True),
                     }
-                    for row in accepted_events.collect()
+                    for row in accepted_rows
                 ],
             )
             LOGGER.info(
@@ -214,8 +217,11 @@ def main() -> None:
                 len(raw_rows),
                 len(invalid_rows),
                 late_count,
-                accepted_events.count(),
+                accepted_count,
             )
+            accepted_events.unpersist()
+            valid_batch.unpersist()
+
     watermark_query = None
     raw_query = None
     try:
@@ -253,17 +259,9 @@ def main() -> None:
             )
             .start()
         )
-        deadline = time.monotonic() + 60
-        while time.monotonic() < deadline:
-            progress = watermark_query.lastProgress
-            input_rows = progress.get("numInputRows", 0) if progress else 0
-            if input_rows > 0:
-                LOGGER.info(
-                    "Watermark audit consumed %s input rows before raw capture started",
-                    input_rows,
-                )
-                break
-            time.sleep(1)
+        # Give the watermark query time to start before beginning raw event capture.
+        LOGGER.info("Waiting for watermark query to start (5 seconds)...")
+        time.sleep(5)
         events = (
             spark.readStream.format("kafka")
             .option("kafka.bootstrap.servers", kafka_config["bootstrap_servers"])
