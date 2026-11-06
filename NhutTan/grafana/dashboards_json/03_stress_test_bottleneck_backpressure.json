@@ -22,7 +22,7 @@
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
       "id": 100,
-      "title": "GRAFANA MONITORING & BẮT KHOẢNH KHẮC BACKPRESSURE & CONSUMER LAG — ĐỀ TÀI 16 (TÂN LƯU)",
+      "title": "GRAFANA MONITORING & BẮT KHOẢNH KHẮC BACKPRESSURE & CONSUMER LAG — ĐỀ TÀI 16",
       "type": "row"
     },
     {
@@ -34,7 +34,7 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "blue", "value": null },
+              { "color": "#56B6F7", "value": null },
               { "color": "yellow", "value": 100 },
               { "color": "red", "value": 300 }
             ]
@@ -50,7 +50,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["max"], "fields": "", "values": false },
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "textMode": "auto"
       },
       "pluginVersion": "10.4.0",
@@ -62,7 +62,7 @@
           "refId": "A"
         }
       ],
-      "title": "PEAK INPUT RATE (Tốc Độ Bơm Đỉnh)",
+      "title": "PEAK INPUT RATE (Tốc Độ Bơm)",
       "type": "stat"
     },
     {
@@ -98,7 +98,7 @@
           "refId": "A"
         }
       ],
-      "title": "SPARK CAPACITY (Trần Xử Lý Tối Đa)",
+      "title": "SPARK CAPACITY (Trần Xử Lý)",
       "type": "stat"
     },
     {
@@ -111,8 +111,8 @@
             "mode": "absolute",
             "steps": [
               { "color": "green", "value": null },
-              { "color": "yellow", "value": 500 },
-              { "color": "red", "value": 5000 }
+              { "color": "yellow", "value": 50 },
+              { "color": "red", "value": 500 }
             ]
           },
           "unit": "short"
@@ -126,7 +126,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["max"], "fields": "", "values": false },
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "textMode": "auto"
       },
       "pluginVersion": "10.4.0",
@@ -134,7 +134,7 @@
         {
           "datasource": "Prometheus",
           "expr": "max(spark_streaming_consumer_lag or (spark_streaming_input_rows_per_second - spark_streaming_processed_rows_per_second))",
-          "legendFormat": "Max Lag",
+          "legendFormat": "Lag",
           "refId": "A"
         }
       ],
@@ -166,7 +166,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["max"], "fields": "", "values": false },
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "textMode": "auto"
       },
       "pluginVersion": "10.4.0",
@@ -174,7 +174,7 @@
         {
           "datasource": "Prometheus",
           "expr": "max(spark_streaming_batch_duration_seconds or (spark_batch_duration_ms / 1000))",
-          "legendFormat": "Batch Duration Max",
+          "legendFormat": "Batch Duration",
           "refId": "A"
         }
       ],
@@ -206,7 +206,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["max"], "fields": "", "values": false },
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "textMode": "auto"
       },
       "pluginVersion": "10.4.0",
@@ -233,7 +233,7 @@
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 15,
+            "fillOpacity": 12,
             "gradientMode": "opacity",
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
             "insertNulls": false,
@@ -259,43 +259,43 @@
           {
             "matcher": { "id": "byName", "options": "Input Rate (Bơm vào Kafka)" },
             "properties": [
-              { "id": "color", "value": { "fixedColor": "super-light-blue", "mode": "fixed" } },
+              { "id": "color", "value": { "fixedColor": "#56B6F7", "mode": "fixed" } },
               { "id": "custom.lineWidth", "value": 2.5 }
             ]
           },
           {
             "matcher": { "id": "byName", "options": "Processed Rate (Spark xử lý)" },
             "properties": [
-              { "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } },
+              { "id": "color", "value": { "fixedColor": "#50E3C2", "mode": "fixed" } },
               { "id": "custom.lineWidth", "value": 2 }
             ]
           },
           {
             "matcher": { "id": "byName", "options": "Trần Bão Hòa Spark Capacity (200 rows/s)" },
             "properties": [
-              { "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } },
+              { "id": "color", "value": { "fixedColor": "#FF4D4D", "mode": "fixed" } },
               { "id": "custom.lineStyle", "value": { "dash": [10, 10], "fill": "dash" } }
             ]
           }
         ]
       },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 5 },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 5 },
       "id": 6,
       "options": {
-        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "legend": { "calcs": ["mean", "max", "lastNotNull"], "displayMode": "list", "placement": "bottom", "showLegend": true },
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "pluginVersion": "10.4.0",
       "targets": [
         {
           "datasource": "Prometheus",
-          "expr": "spark_streaming_input_rows_per_second or spark_input_rows_per_sec",
+          "expr": "max(spark_streaming_input_rows_per_second or spark_input_rows_per_sec)",
           "legendFormat": "Input Rate (Bơm vào Kafka)",
           "refId": "A"
         },
         {
           "datasource": "Prometheus",
-          "expr": "spark_streaming_processed_rows_per_second or spark_processed_rows_per_sec",
+          "expr": "max(spark_streaming_processed_rows_per_second or spark_processed_rows_per_sec)",
           "legendFormat": "Processed Rate (Spark xử lý)",
           "refId": "B"
         },
@@ -320,7 +320,7 @@
             "axisLabel": "Consumer Lag (messages)",
             "axisPlacement": "left",
             "drawStyle": "line",
-            "fillOpacity": 45,
+            "fillOpacity": 35,
             "gradientMode": "opacity",
             "lineInterpolation": "smooth",
             "lineWidth": 2,
@@ -330,8 +330,8 @@
             "mode": "absolute",
             "steps": [
               { "color": "green", "value": null },
-              { "color": "yellow", "value": 500 },
-              { "color": "red", "value": 5000 }
+              { "color": "yellow", "value": 50 },
+              { "color": "red", "value": 500 }
             ]
           },
           "unit": "short"
@@ -340,14 +340,14 @@
           {
             "matcher": { "id": "byName", "options": "Consumer Lag (Hàng đợi Redpanda)" },
             "properties": [
-              { "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } },
-              { "id": "custom.fillOpacity", "value": 40 }
+              { "id": "color", "value": { "fixedColor": "#FF9F43", "mode": "fixed" } },
+              { "id": "custom.fillOpacity", "value": 35 }
             ]
           },
           {
             "matcher": { "id": "byName", "options": "Thời Gian Micro-Batch (Spark Engine)" },
             "properties": [
-              { "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } },
+              { "id": "color", "value": { "fixedColor": "#FECA57", "mode": "fixed" } },
               { "id": "custom.axisPlacement", "value": "right" },
               { "id": "custom.axisLabel", "value": "Thời gian Micro-Batch (giây)" },
               { "id": "custom.fillOpacity", "value": 0 },
@@ -358,7 +358,7 @@
           {
             "matcher": { "id": "byName", "options": "Ngưỡng Trigger An Toàn (1.0s)" },
             "properties": [
-              { "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } },
+              { "id": "color", "value": { "fixedColor": "#FF5252", "mode": "fixed" } },
               { "id": "custom.axisPlacement", "value": "right" },
               { "id": "custom.lineStyle", "value": { "dash": [10, 10], "fill": "dash" } },
               { "id": "custom.fillOpacity", "value": 0 }
@@ -366,23 +366,23 @@
           }
         ]
       },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 15 },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 14 },
       "id": 7,
       "options": {
-        "legend": { "calcs": ["max", "lastNotNull"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "legend": { "calcs": ["mean", "max", "lastNotNull"], "displayMode": "list", "placement": "bottom", "showLegend": true },
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "pluginVersion": "10.4.0",
       "targets": [
         {
           "datasource": "Prometheus",
-          "expr": "spark_streaming_consumer_lag or (spark_streaming_input_rows_per_second - spark_streaming_processed_rows_per_second)",
+          "expr": "max(spark_streaming_consumer_lag or (spark_streaming_input_rows_per_second - spark_streaming_processed_rows_per_second))",
           "legendFormat": "Consumer Lag (Hàng đợi Redpanda)",
           "refId": "A"
         },
         {
           "datasource": "Prometheus",
-          "expr": "spark_streaming_batch_duration_seconds or (spark_batch_duration_ms / 1000)",
+          "expr": "max(spark_streaming_batch_duration_seconds or (spark_batch_duration_ms / 1000))",
           "legendFormat": "Thời Gian Micro-Batch (Spark Engine)",
           "refId": "B"
         },
@@ -413,5 +413,5 @@
   "timezone": "browser",
   "title": "03 - Ép Tải, Backpressure & Điểm Nghẽn Cổ Chai (Tuần 5 - Tân Lưu)",
   "uid": "cloudstream-tuan5-stresstest",
-  "version": 2
+  "version": 3
 }
