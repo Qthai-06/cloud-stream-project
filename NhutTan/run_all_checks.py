@@ -67,8 +67,9 @@ def check_files_exist():
         NHUT_TAN_DIR / "src" / "spark_metrics_listener.py",
         NHUT_TAN_DIR / "src" / "stress_test_backpressure.py",
         NHUT_TAN_DIR / "src" / "generate_bottleneck_chart.py",
-        NHUT_TAN_DIR / "BaoCao_Tuan5_EpTai_TanLuu.md",
-        NHUT_TAN_DIR / "BaoCao_Tuan1_den_Tuan5_TanLuu.md",
+        NHUT_TAN_DIR / "HUONG_DAN_CHAY_DASHBOARD.md",
+        OUTPUT_DOCX,
+        CODE_DOCX,
     ]
     for f in required_files:
         if not f.exists():
@@ -188,8 +189,9 @@ def test_reports():
         print("  [X] Thiếu một hoặc nhiều file báo cáo Word trong ket_qua/")
         return False
     md_files = [
-        NHUT_TAN_DIR / "BaoCao_Tuan5_EpTai_TanLuu.md",
-        NHUT_TAN_DIR / "BaoCao_Tuan1_den_Tuan5_TanLuu.md",
+        NHUT_TAN_DIR / "HUONG_DAN_CHAY_DASHBOARD.md",
+        OUTPUT_DOCX,
+        CODE_DOCX,
     ]
     for md in md_files:
         if md.exists():

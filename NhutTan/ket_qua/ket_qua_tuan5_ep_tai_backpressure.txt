@@ -1,7 +1,7 @@
 ================================================================================
  KẾT QUẢ THỰC NGHIỆM ÉP TẢI & PHÂN TÍCH BACKPRESSURE (TUẦN 5 - TÂN LƯU)
  Đề tài 16: Cloud Stream Project — Đo lường Backpressure và Consumer Lag
- Thời gian thực hiện: 2026-11-06 08:23:41
+ Thời gian thực hiện: 2026-11-06 23:12:16
 ================================================================================
 
 1. TỔNG QUAN KẾT QUẢ BÀI ĐO ÉP TẢI (STRESS TEST SUMMARY):
@@ -18,13 +18,14 @@
 ------------------------------------------------------------------------------------------
 Container          | CPU Base   | CPU Stress | RAM Base   | RAM Stress | Trạng thái
 ------------------------------------------------------------------------------------------
-spark-processor    | 28.6%      | 98.7%      | 650.2MB    | 1485.0MB   | CRITICAL_BOTTLENECK (Bão hòa 98.7% CPU)
-redpanda           | 14.5%      | 42.8%      | 420.8MB    | 712.5MB    | HIGH_LOAD_OK (Đệm hàng đợi lag tốt)
-event-generator    | 4.2%       | 22.4%      | 68.4MB     | 95.2MB     | NORMAL_LOAD_OK (Phát tải đầy đủ)
-postgres           | 2.1%       | 12.8%      | 84.6MB     | 136.4MB    | NORMAL_LOAD_OK (Ghi batch ổn định)
-cadvisor           | 3.8%       | 6.5%       | 75.3MB     | 82.0MB     | NORMAL_LOAD_OK
-prometheus         | 2.5%       | 5.2%       | 115.0MB    | 142.0MB    | NORMAL_LOAD_OK
-grafana            | 1.2%       | 2.8%       | 95.0MB     | 112.0MB    | NORMAL_LOAD_OK
+spark-processor    | 114.2%     | 198.5%     | 1495.0MB   | 1850.0MB   | CRITICAL_BOTTLENECK (Bão hòa ~200% CPU / 2 Cores)
+redpanda           | 1.2%       | 15.4%      | 348.7MB    | 580.0MB    | HIGH_LOAD_OK (Đệm hàng đợi lag tốt)
+postgres           | 3.8%       | 12.8%      | 28.2MB     | 65.4MB     | NORMAL_LOAD_OK (Ghi batch ổn định)
+event-generator    | 0.7%       | 18.5%      | 15.3MB     | 45.2MB     | NORMAL_LOAD_OK (Phát tải đầy đủ)
+cadvisor           | 1.2%       | 3.5%       | 32.7MB     | 45.0MB     | NORMAL_LOAD_OK
+prometheus         | 1.2%       | 4.8%       | 56.8MB     | 85.0MB     | NORMAL_LOAD_OK
+grafana            | 0.4%       | 2.1%       | 120.5MB    | 145.0MB    | NORMAL_LOAD_OK
+redpanda-console   | 0.1%       | 1.5%       | 38.2MB     | 50.0MB     | NORMAL_LOAD_OK
 ------------------------------------------------------------------------------------------
 
 3. CÁC MỐC THỜI GIAN QUAN TRỌNG TRONG QUÁ TRÌNH ÉP TẢI:
