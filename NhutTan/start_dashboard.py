@@ -258,8 +258,8 @@ def export_word_reports():
 def open_browser_grafana(docker_ok: bool, auto_open: bool = True):
     log_step(6, "Mở giao diện Web Grafana")
     # Kiểm tra cổng Grafana đang mở
-    grafana_url = "http://localhost:13000"
-    for p in [13000, 3000]:
+    grafana_url = "http://localhost:3000"
+    for p in [3000, 13300, 13000]:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.settimeout(1.0)
@@ -288,7 +288,7 @@ def print_summary(docker_ok: bool):
 """)
     if docker_ok:
         print("📌 [ĐƯỜNG DẪN TRUY CẬP HỆ THỐNG]:")
-        print(" • Grafana Dashboard     : http://localhost:13000 (hoặc http://localhost:3000) [admin / admin]")
+        print(f" • Grafana Dashboard     : {grafana_url} (hoặc http://localhost:3000 / http://localhost:13300) [admin / admin]")
         print(" • Prometheus Targets   : http://localhost:19090/targets (hoặc http://localhost:9090/targets)")
         print(" • Spark Metrics Exporter: http://localhost:8000/metrics")
         print(" • Redpanda Console      : http://localhost:18080")
