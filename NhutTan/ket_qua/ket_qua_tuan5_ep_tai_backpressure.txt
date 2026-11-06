@@ -1,7 +1,7 @@
 ================================================================================
  KẾT QUẢ THỰC NGHIỆM ÉP TẢI & PHÂN TÍCH BACKPRESSURE (TUẦN 5 - TÂN LƯU)
  Đề tài 16: Cloud Stream Project — Đo lường Backpressure và Consumer Lag
- Thời gian thực hiện: 2026-11-06 23:12:16
+ Thời gian thực hiện: 2026-11-07 00:07:41
 ================================================================================
 
 1. TỔNG QUAN KẾT QUẢ BÀI ĐO ÉP TẢI (STRESS TEST SUMMARY):
