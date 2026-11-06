@@ -85,6 +85,7 @@ def check_dashboards_valid():
         NHUT_TAN_DIR / "grafana" / "dashboards_json" / "01_container_resources_baseline.json",
         NHUT_TAN_DIR / "grafana" / "dashboards_json" / "02_spark_streaming_performance.json",
         NHUT_TAN_DIR / "grafana" / "dashboards_json" / "03_stress_test_bottleneck_backpressure.json",
+        NHUT_TAN_DIR / "grafana" / "dashboards_json" / "04_latency_vs_throughput_knee_point.json",
     ]
 
     for d in dashboards:
