@@ -1,6 +1,6 @@
 [
   {
-    "timestamp": "2026-11-06T17:07:41.785139+00:00",
+    "timestamp": "2026-11-06T17:14:35.035642+00:00",
     "container_name": "spark-processor",
     "role": "Streaming Engine (Window/Watermark)",
     "cpu_usage_percent": 114.2,
@@ -10,7 +10,7 @@
     "status": "NORMAL_LOAD_OK"
   },
   {
-    "timestamp": "2026-11-06T17:07:41.785139+00:00",
+    "timestamp": "2026-11-06T17:14:35.035642+00:00",
     "container_name": "redpanda",
     "role": "Message Broker",
     "cpu_usage_percent": 1.2,
@@ -20,7 +20,7 @@
     "status": "NORMAL_LOAD_OK"
   },
   {
-    "timestamp": "2026-11-06T17:07:41.785139+00:00",
+    "timestamp": "2026-11-06T17:14:35.035642+00:00",
     "container_name": "postgres",
     "role": "Window Metrics Sink (OLTP)",
     "cpu_usage_percent": 3.8,
@@ -30,7 +30,7 @@
     "status": "NORMAL_LOAD_OK"
   },
   {
-    "timestamp": "2026-11-06T17:07:41.785139+00:00",
+    "timestamp": "2026-11-06T17:14:35.035642+00:00",
     "container_name": "event-generator",
     "role": "IoT Data Generator (10 msg/s)",
     "cpu_usage_percent": 0.7,
@@ -40,7 +40,7 @@
     "status": "NORMAL_LOAD_OK"
   },
   {
-    "timestamp": "2026-11-06T17:07:41.785139+00:00",
+    "timestamp": "2026-11-06T17:14:35.035642+00:00",
     "container_name": "cadvisor",
     "role": "Container Metrics Exporter",
     "cpu_usage_percent": 1.2,
@@ -50,7 +50,7 @@
     "status": "NORMAL_LOAD_OK"
   },
   {
-    "timestamp": "2026-11-06T17:07:41.785139+00:00",
+    "timestamp": "2026-11-06T17:14:35.035642+00:00",
     "container_name": "prometheus",
     "role": "Metrics Collector",
     "cpu_usage_percent": 1.2,
@@ -60,7 +60,7 @@
     "status": "NORMAL_LOAD_OK"
   },
   {
-    "timestamp": "2026-11-06T17:07:41.785139+00:00",
+    "timestamp": "2026-11-06T17:14:35.035642+00:00",
     "container_name": "grafana",
     "role": "Visualization Dashboard",
     "cpu_usage_percent": 0.4,
@@ -70,7 +70,7 @@
     "status": "NORMAL_LOAD_OK"
   },
   {
-    "timestamp": "2026-11-06T17:07:41.785139+00:00",
+    "timestamp": "2026-11-06T17:14:35.035642+00:00",
     "container_name": "redpanda-console",
     "role": "Web UI & Schema Viewer",
     "cpu_usage_percent": 0.1,
