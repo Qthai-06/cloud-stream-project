@@ -61,7 +61,7 @@
       "targets": [
         {
           "datasource": "Prometheus",
-          "expr": "count(count(container_last_seen{name=~\".+\"}) by (name))",
+          "expr": "count(count(container_last_seen{name=~\".+\"}) by (name)) or count(container_memory_working_set_bytes{name=~\".+\"})",
           "legendFormat": "Active Containers",
           "refId": "A"
         }

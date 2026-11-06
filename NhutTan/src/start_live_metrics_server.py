@@ -22,6 +22,14 @@ STATE = {
     "counter_cadvisor": 0.0,
     "counter_prom": 0.0,
     "counter_grafana": 0.0,
+    "net_rx_spark": 0.0,
+    "net_rx_rp": 0.0,
+    "net_tx_spark": 0.0,
+    "net_tx_rp": 0.0,
+    "fs_write_spark": 0.0,
+    "fs_write_rp": 0.0,
+    "total_input_rows": 0.0,
+    "late_events_total": 0.0,
 }
 
 
@@ -85,6 +93,15 @@ def generate_prometheus_payload() -> str:
     STATE["counter_prom"] += (5.2 / 100.0) * dt
     STATE["counter_grafana"] += (2.8 / 100.0) * dt
 
+    STATE["net_rx_spark"] += 65.0 * 1024 * dt
+    STATE["net_tx_spark"] += 15.0 * 1024 * dt
+    STATE["net_rx_rp"] += (input_rate * 256) * dt
+    STATE["net_tx_rp"] += (proc_rate * 256) * dt
+    STATE["fs_write_spark"] += 24.0 * 1024 * dt
+    STATE["fs_write_rp"] += 32.0 * 1024 * dt
+    STATE["total_input_rows"] += input_rate * dt
+    STATE["late_events_total"] += (input_rate * 0.20) * dt
+
     lines = [
         "# HELP spark_streaming_input_rows_per_second Tốc độ nhận bản ghi (rows/sec)",
         "# TYPE spark_streaming_input_rows_per_second gauge",
@@ -106,6 +123,25 @@ def generate_prometheus_payload() -> str:
         "# TYPE spark_streaming_consumer_lag gauge",
         f'spark_streaming_consumer_lag{{group="spark_consumer",topic="iot-sensor-events"}} {lag}',
         f'redpanda_kafka_consumer_group_lag{{group="spark_consumer",topic="iot-sensor-events"}} {lag}',
+        "",
+        "# HELP spark_streaming_total_input_rows Tổng số bản ghi đã nhận",
+        "# TYPE spark_streaming_total_input_rows counter",
+        f'spark_streaming_total_input_rows{{query_name="iot_sensor_window"}} {int(STATE["total_input_rows"])}',
+        "",
+        "# HELP spark_streaming_late_events_total Tổng số bản ghi đến muộn (Late Data 20%)",
+        "# TYPE spark_streaming_late_events_total counter",
+        f'spark_streaming_late_events_total{{query_name="iot_sensor_window"}} {int(STATE["late_events_total"])}',
+        "",
+        "# HELP container_last_seen Thời điểm container hoạt động gần nhất",
+        "# TYPE container_last_seen gauge",
+        f'container_last_seen{{name="spark-processor"}} {int(now)}',
+        f'container_last_seen{{name="redpanda"}} {int(now)}',
+        f'container_last_seen{{name="event-generator"}} {int(now)}',
+        f'container_last_seen{{name="postgres"}} {int(now)}',
+        f'container_last_seen{{name="cadvisor"}} {int(now)}',
+        f'container_last_seen{{name="prometheus"}} {int(now)}',
+        f'container_last_seen{{name="grafana"}} {int(now)}',
+        f'container_last_seen{{name="clickhouse"}} {int(now)}',
         "",
         "# HELP container_cpu_percent Tỷ lệ phần trăm CPU container",
         "# TYPE container_cpu_percent gauge",
@@ -136,6 +172,24 @@ def generate_prometheus_payload() -> str:
         f'container_memory_working_set_bytes{{name="cadvisor"}} {int(75.3 * 1024 * 1024)}',
         f'container_memory_working_set_bytes{{name="prometheus"}} {int(115.0 * 1024 * 1024)}',
         f'container_memory_working_set_bytes{{name="grafana"}} {int(95.0 * 1024 * 1024)}',
+        "",
+        "# HELP container_network_receive_bytes_total Lưu lượng mạng nhận",
+        "# TYPE container_network_receive_bytes_total counter",
+        f'container_network_receive_bytes_total{{name="spark-processor"}} {int(STATE["net_rx_spark"])}',
+        f'container_network_receive_bytes_total{{name="redpanda"}} {int(STATE["net_rx_rp"])}',
+        f'container_network_receive_bytes_total{{name="event-generator"}} {int(STATE["net_rx_rp"] * 0.1)}',
+        "",
+        "# HELP container_network_transmit_bytes_total Lưu lượng mạng gửi",
+        "# TYPE container_network_transmit_bytes_total counter",
+        f'container_network_transmit_bytes_total{{name="spark-processor"}} {int(STATE["net_tx_spark"])}',
+        f'container_network_transmit_bytes_total{{name="redpanda"}} {int(STATE["net_tx_rp"])}',
+        f'container_network_transmit_bytes_total{{name="event-generator"}} {int(STATE["net_tx_rp"] * 0.9)}',
+        "",
+        "# HELP container_fs_writes_bytes_total Tốc độ ghi đĩa",
+        "# TYPE container_fs_writes_bytes_total counter",
+        f'container_fs_writes_bytes_total{{name="spark-processor"}} {int(STATE["fs_write_spark"])}',
+        f'container_fs_writes_bytes_total{{name="redpanda"}} {int(STATE["fs_write_rp"])}',
+        f'container_fs_writes_bytes_total{{name="postgres"}} {int(STATE["fs_write_spark"] * 0.4)}',
         "",
     ]
     return "\n".join(lines) + "\n"

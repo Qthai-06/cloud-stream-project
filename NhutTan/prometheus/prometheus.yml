@@ -19,7 +19,7 @@ scrape_configs:
     scrape_interval: 2s
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['cadvisor:8080', 'host.containers.internal:8000', '10.89.0.1:8000']
+      - targets: ['cadvisor:8080', 'host.docker.internal:8000', 'host.containers.internal:8000', '10.89.0.1:8000']
     metric_relabel_configs:
       - source_labels: [__name__]
         regex: 'container_.*'
@@ -28,16 +28,20 @@ scrape_configs:
   # 3. Giám sát Message Broker Redpanda (Kafka-compatible)
   - job_name: 'redpanda'
     scrape_interval: 5s
-    metrics_path: '/public_metrics'
+    metrics_path: '/metrics'
     static_configs:
-      - targets: ['redpanda:9644']
+      - targets: ['redpanda:9644', 'host.docker.internal:8000']
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: '.*(kafka|redpanda|lag).*'
+        action: keep
 
   # 4. Giám sát Spark Structured Streaming Engine (Tuần 4)
   - job_name: 'spark_streaming'
     scrape_interval: 2s
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['spark-processor:8000', 'host.containers.internal:8000', '10.89.0.1:8000', 'host.docker.internal:8000']
+      - targets: ['spark-processor:8000', 'host.docker.internal:8000', 'host.containers.internal:8000', '10.89.0.1:8000']
     metric_relabel_configs:
       - source_labels: [__name__]
         regex: 'spark_streaming_.*'

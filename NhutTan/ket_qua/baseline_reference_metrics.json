@@ -1,6 +1,6 @@
 [
   {
-    "timestamp": "2026-11-04T08:50:52.857160+00:00",
+    "timestamp": "2026-11-05T16:53:59.089601+00:00",
     "container_name": "redpanda",
     "role": "Message Broker",
     "cpu_usage_percent": 14.5,
@@ -10,7 +10,7 @@
     "status": "NORMAL_LOAD_OK"
   },
   {
-    "timestamp": "2026-11-04T08:50:52.857160+00:00",
+    "timestamp": "2026-11-05T16:53:59.089601+00:00",
     "container_name": "event-generator",
     "role": "IoT Data Generator (10 msg/s)",
     "cpu_usage_percent": 4.2,
@@ -20,7 +20,7 @@
     "status": "NORMAL_LOAD_OK"
   },
   {
-    "timestamp": "2026-11-04T08:50:52.857160+00:00",
+    "timestamp": "2026-11-05T16:53:59.089601+00:00",
     "container_name": "spark-processor",
     "role": "Streaming Engine (Window/Watermark)",
     "cpu_usage_percent": 28.6,
@@ -30,7 +30,7 @@
     "status": "NORMAL_LOAD_OK"
   },
   {
-    "timestamp": "2026-11-04T08:50:52.857160+00:00",
+    "timestamp": "2026-11-05T16:53:59.089601+00:00",
     "container_name": "cadvisor",
     "role": "Container Metrics Exporter",
     "cpu_usage_percent": 3.8,
@@ -40,7 +40,7 @@
     "status": "NORMAL_LOAD_OK"
   },
   {
-    "timestamp": "2026-11-04T08:50:52.857160+00:00",
+    "timestamp": "2026-11-05T16:53:59.089601+00:00",
     "container_name": "postgres",
     "role": "Window Metrics Sink (OLTP)",
     "cpu_usage_percent": 2.1,
@@ -50,7 +50,7 @@
     "status": "NORMAL_LOAD_OK"
   },
   {
-    "timestamp": "2026-11-04T08:50:52.857160+00:00",
+    "timestamp": "2026-11-05T16:53:59.089601+00:00",
     "container_name": "clickhouse",
     "role": "OLAP Analytics Database",
     "cpu_usage_percent": 1.8,
@@ -60,7 +60,7 @@
     "status": "NORMAL_LOAD_OK"
   },
   {
-    "timestamp": "2026-11-04T08:50:52.857160+00:00",
+    "timestamp": "2026-11-05T16:53:59.089601+00:00",
     "container_name": "prometheus",
     "role": "Metrics Collector",
     "cpu_usage_percent": 2.5,
@@ -70,7 +70,7 @@
     "status": "NORMAL_LOAD_OK"
   },
   {
-    "timestamp": "2026-11-04T08:50:52.857160+00:00",
+    "timestamp": "2026-11-05T16:53:59.089601+00:00",
     "container_name": "grafana",
     "role": "Visualization Dashboard",
     "cpu_usage_percent": 1.2,

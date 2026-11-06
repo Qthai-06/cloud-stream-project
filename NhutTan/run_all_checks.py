@@ -34,7 +34,11 @@ try:
         render_backpressure_chart,
         render_resource_comparison_chart,
     )
-    from NhutTan.src.export_report_docx import build_report_docx, OUTPUT_DOCX
+    from NhutTan.src.build_exact_format_reports import build_noidung_tanluu, build_code_tanluu, OUT_NOIDUNG as OUTPUT_DOCX
+    def build_report_docx():
+        build_noidung_tanluu()
+        build_code_tanluu()
+        return True
 except ImportError:
     from src.record_baseline import (  # type: ignore
         generate_reference_baseline,
@@ -51,7 +55,11 @@ except ImportError:
         render_backpressure_chart,
         render_resource_comparison_chart,
     )
-    from src.export_report_docx import build_report_docx, OUTPUT_DOCX  # type: ignore
+    from src.build_exact_format_reports import build_noidung_tanluu, build_code_tanluu, OUT_NOIDUNG as OUTPUT_DOCX  # type: ignore
+    def build_report_docx():
+        build_noidung_tanluu()
+        build_code_tanluu()
+        return True
 
 
 def log_step(name: str):
@@ -74,7 +82,7 @@ def check_files_exist():
         NHUT_TAN_DIR / "src" / "spark_metrics_listener.py",
         NHUT_TAN_DIR / "src" / "stress_test_backpressure.py",
         NHUT_TAN_DIR / "src" / "generate_bottleneck_chart.py",
-        NHUT_TAN_DIR / "src" / "export_report_docx.py",
+        NHUT_TAN_DIR / "src" / "build_exact_format_reports.py",
         NHUT_TAN_DIR / "BaoCao_Tuan5_EpTai_TanLuu.md",
         NHUT_TAN_DIR / "BaoCao_Tuan1_den_Tuan5_TanLuu.md",
     ]

@@ -15,3 +15,7 @@ recovery-evidence/
 # Sensitive Credentials
 .env
 .env.local
+
+# Office Temp & Master Report (đã gỡ khỏi tracking bởi nhóm)
+Report Cloud Computing.docx
+~$*
