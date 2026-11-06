@@ -4,7 +4,7 @@ global:
 scrape_configs:
   - job_name: cadvisor
     static_configs:
-      - targets: ["cadvisor:8080"]
+      - targets: ["cadvisor:8080", "spark-processor:8000"]
 
   - job_name: redpanda
     metrics_path: /public_metrics
