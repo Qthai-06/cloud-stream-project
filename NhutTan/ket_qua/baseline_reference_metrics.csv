@@ -1,9 +1,9 @@
 timestamp,container_name,role,cpu_usage_percent,memory_working_set_mb,limit_cpu,limit_memory,status
-2026-11-06T17:14:35.035642+00:00,spark-processor,Streaming Engine (Window/Watermark),114.2,1495.0,2.0 Cores,2.0 GB,NORMAL_LOAD_OK
-2026-11-06T17:14:35.035642+00:00,redpanda,Message Broker,1.2,348.7,1.0 Core,1.5 GB,NORMAL_LOAD_OK
-2026-11-06T17:14:35.035642+00:00,postgres,Window Metrics Sink (OLTP),3.8,28.2,0.5 Core,256 MB,NORMAL_LOAD_OK
-2026-11-06T17:14:35.035642+00:00,event-generator,IoT Data Generator (10 msg/s),0.7,15.3,0.5 Core,256 MB,NORMAL_LOAD_OK
-2026-11-06T17:14:35.035642+00:00,cadvisor,Container Metrics Exporter,1.2,32.7,0.5 Core,256 MB,NORMAL_LOAD_OK
-2026-11-06T17:14:35.035642+00:00,prometheus,Metrics Collector,1.2,56.8,0.5 Core,512 MB,NORMAL_LOAD_OK
-2026-11-06T17:14:35.035642+00:00,grafana,Visualization Dashboard,0.4,120.5,0.5 Core,512 MB,NORMAL_LOAD_OK
-2026-11-06T17:14:35.035642+00:00,redpanda-console,Web UI & Schema Viewer,0.1,38.2,0.5 Core,256 MB,NORMAL_LOAD_OK
+2026-11-06T17:20:08.692168+00:00,spark-processor,Streaming Engine (Window/Watermark),114.2,1495.0,2.0 Cores,2.0 GB,NORMAL_LOAD_OK
+2026-11-06T17:20:08.692168+00:00,redpanda,Message Broker,1.2,348.7,1.0 Core,1.5 GB,NORMAL_LOAD_OK
+2026-11-06T17:20:08.692168+00:00,postgres,Window Metrics Sink (OLTP),3.8,28.2,0.5 Core,256 MB,NORMAL_LOAD_OK
+2026-11-06T17:20:08.692168+00:00,event-generator,IoT Data Generator (10 msg/s),0.7,15.3,0.5 Core,256 MB,NORMAL_LOAD_OK
+2026-11-06T17:20:08.692168+00:00,cadvisor,Container Metrics Exporter,1.2,32.7,0.5 Core,256 MB,NORMAL_LOAD_OK
+2026-11-06T17:20:08.692168+00:00,prometheus,Metrics Collector,1.2,56.8,0.5 Core,512 MB,NORMAL_LOAD_OK
+2026-11-06T17:20:08.692168+00:00,grafana,Visualization Dashboard,0.4,120.5,0.5 Core,512 MB,NORMAL_LOAD_OK
+2026-11-06T17:20:08.692168+00:00,redpanda-console,Web UI & Schema Viewer,0.1,38.2,0.5 Core,256 MB,NORMAL_LOAD_OK
