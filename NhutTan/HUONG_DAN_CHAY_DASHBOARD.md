@@ -52,15 +52,15 @@
 
 ## 1. TỔNG QUAN HỆ THỐNG DASHBOARD
 
-Hệ thống giám sát của Tân Lưu gồm **3 Dashboards JSON chính thức** được cấu hình sẵn trong Grafana (Auto-Provisioning) và **5 biểu đồ trực quan hóa dữ liệu đo lường**:
+Hệ thống giám sát của Tân Lưu gồm **4 Dashboards JSON chính thức** được cấu hình sẵn trong Grafana (Auto-Provisioning) và **5 biểu đồ trực quan hóa dữ liệu đo lường**:
 
 | STT | Dashboard / Biểu đồ | Chức năng chính | Metrics thu thập |
 | :---: | :--- | :--- | :--- |
 | **01** | `01_container_resources_baseline.json`<br>*(dashboard_01_baseline_resources.png)* | Giám sát tài nguyên phần cứng toàn bộ 8 container ở mức tải chuẩn 10 msg/s | `container_cpu_usage_seconds_total`<br>`container_memory_working_set_bytes`<br>`container_network_receive_bytes_total` |
 | **02** | `02_spark_streaming_performance.json`<br>*(dashboard_02_spark_performance.png)* | Giám sát hiệu năng xử lý luồng Spark Structured Streaming & Checkpoint | `spark_streaming_input_rate`<br>`spark_streaming_processed_rate`<br>`spark_streaming_batch_duration_seconds`<br>`spark_streaming_checkpoint_duration_seconds` |
 | **03** | `03_stress_test_bottleneck_backpressure.json`<br>*(bieu_do_ep_tai_backpressure.png)* | Bắt khoảnh khắc Backpressure, Consumer Lag dồn ứ 15,000 tin nhắn khi ép tải 500 msg/s | `kafka_consumer_group_lag`<br>`spark_streaming_is_backpressure`<br>`input_rate vs processed_rate gap` |
-| **04** | Biến thiên Tài nguyên CPU/RAM<br>*(bieu_do_tai_nguyen_cpu_ram.png)* | So sánh tài nguyên trước và sau khi ép tải, chỉ ra Spark CPU 98.7% bão hòa | Biến thiên CPU (%) và RAM (MB) của 6 container chủ chốt |
-| **05** | Đường cong Latency vs Throughput<br>*(bieu_do_latency_vs_throughput.png)* | Xác định Điểm gãy công suất (Knee Point: 200 msg/s) và độ trễ đuôi P50/P95/P99 | Phân phối trễ E2E Latency theo định luật Little và lý thuyết hàng đợi |
+| **04** | `04_latency_vs_throughput_knee_point.json`<br>*(bieu_do_latency_vs_throughput.png)* | Xác định Điểm gãy công suất (Knee Point: 200 msg/s) và độ trễ đuôi P50/P95/P99 | Phân phối trễ E2E Latency, Watermark 120s, Knee Point 200 rows/s |
+| **05** | Biến thiên Tài nguyên CPU/RAM<br>*(bieu_do_tai_nguyen_cpu_ram.png)* | So sánh tài nguyên trước và sau khi ép tải, chỉ ra Spark CPU bão hòa | Biến thiên CPU (%) và RAM (MB) của các container chủ chốt |
 
 ---
 
@@ -104,10 +104,11 @@ python3 NhutTan/src/start_live_metrics_server.py
 Hệ thống đã cấu hình **Auto-Provisioning**, do đó ngay khi vào Grafana bạn **không cần tạo hay import gì bằng tay**:
 1. Trên menu bên trái của Grafana, click vào **Dashboards**.
 2. Nhấp vào thư mục **Cloud Stream Monitoring (Tan Luu)**.
-3. Bạn sẽ thấy ngay 3 Dashboard:
+3. Bạn sẽ thấy ngay 4 Dashboard:
    - **01 - Hạ Tầng & Giám Sát Tài Nguyên Baseline (Tân Lưu)**
    - **02 - Hiệu Năng Spark Streaming & Checkpoint (Tân Lưu)**
    - **03 - Ép Tải, Backpressure & Điểm Nghẽn Cổ Chai (Tuần 5 - Tân Lưu)**
+   - **04 - Tương Quan Latency vs Throughput & Điểm Gãy Knee Point (Tuần 5 - Tân Lưu)**
 4. Nhấp vào từng dashboard để xem các biểu đồ hiển thị thời gian thực!
 
 > 💡 **Mẹo:** Ở góc trên bên phải của Grafana, chọn khoảng thời gian **Last 5 minutes** và chế độ tự làm mới **Auto refresh: 5s** để xem dữ liệu cập nhật động liên tục.
