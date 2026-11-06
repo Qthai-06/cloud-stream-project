@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: 'NhutTanDashboards'
+    orgId: 1
+    folder: 'Cloud Stream Metrics (Tan Luu)'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards
+

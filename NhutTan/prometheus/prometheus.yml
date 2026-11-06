@@ -14,12 +14,12 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
-  # 2. Giám sát tài nguyên phần cứng Container qua cAdvisor / Host Exporter (Tuần 1-2 & Tuần 3)
+  # 2. Giám sát tài nguyên phần cứng Container qua cAdvisor & Spark Container Exporter (Tuần 1-2 & Tuần 3)
   - job_name: 'cadvisor'
     scrape_interval: 2s
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['cadvisor:8080', 'host.docker.internal:8000', 'host.containers.internal:8000', '10.89.0.1:8000']
+      - targets: ['cadvisor:8080', 'spark-processor:8000', 'host.docker.internal:8000']
     metric_relabel_configs:
       - source_labels: [__name__]
         regex: 'container_.*'
@@ -28,21 +28,21 @@ scrape_configs:
   # 3. Giám sát Message Broker Redpanda (Kafka-compatible)
   - job_name: 'redpanda'
     scrape_interval: 5s
-    metrics_path: '/metrics'
+    metrics_path: '/public_metrics'
     static_configs:
-      - targets: ['redpanda:9644', 'host.docker.internal:8000']
+      - targets: ['redpanda:9644']
     metric_relabel_configs:
       - source_labels: [__name__]
         regex: '.*(kafka|redpanda|lag).*'
         action: keep
 
-  # 4. Giám sát Spark Structured Streaming Engine (Tuần 4)
+  # 4. Giám sát Spark Structured Streaming Engine (Tuần 4 & Tuần 5)
   - job_name: 'spark_streaming'
     scrape_interval: 2s
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['spark-processor:8000', 'host.docker.internal:8000', 'host.containers.internal:8000', '10.89.0.1:8000']
+      - targets: ['spark-processor:8000', 'host.docker.internal:8000']
     metric_relabel_configs:
       - source_labels: [__name__]
-        regex: 'spark_streaming_.*'
+        regex: '.*(spark|spark_streaming|lag).*'
         action: keep

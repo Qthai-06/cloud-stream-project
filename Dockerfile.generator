@@ -1,9 +1,8 @@
 FROM python:3.10-slim
 WORKDIR /app
 
-# Cài đặt thư viện
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Cài đặt thư viện cần thiết cho generator (không cần pyspark nặng 317MB)
+RUN pip install --no-cache-dir kafka-python==2.0.2 pyyaml==6.0.1
 
 # Copy toàn bộ mã nguồn và cấu hình
 COPY src/ /app/src/

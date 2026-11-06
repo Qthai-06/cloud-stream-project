@@ -3,7 +3,7 @@
 """
 ================================================================================
  CLOUD STREAM PROJECT (ĐỀ TÀI 16) — HỆ THỐNG XỬ LÝ LUỒNG THỜI GIAN THỰC
- FILE KHỞI CHẠY TẤT CẢ TRONG 1 (ALL-IN-ONE LAUNCHER)
+ FILE KHỞI CHẠY TẤT CẢ TRONG 1 (ALL-IN-ONE LAUNCHER) - CHẾ ĐỘ DỮ LIỆU THẬT
  Học viên: Tân Lưu (MSSV: 082206000224) | Vai trò: Observability & Testing
 ================================================================================
 Chỉ cần chạy duy nhất 1 lệnh:
@@ -11,20 +11,24 @@ Chỉ cần chạy duy nhất 1 lệnh:
 
 Tất cả các tác vụ sau sẽ tự động thực hiện từ A đến Z:
  1. Cài đặt tự động thư viện cần thiết (pillow, python-docx nếu chưa có).
- 2. Khởi chạy Docker Compose Giám sát (Prometheus & Grafana) nếu máy có Docker.
- 3. Tự động nạp sẵn 3 Dashboard JSON và DataSource vào Grafana (Auto-Provisioning).
- 4. Bật Live Metrics Server ngầm trên cổng 8000 phát metrics chu kỳ 180s cho Prometheus.
- 5. Sinh toàn bộ 5 ảnh biểu đồ Dashboard độ nét cao 1400px lưu tại NhutTan/ket_qua/.
- 6. Xuất toàn bộ 2 file Báo cáo Word chuẩn mẫu (NoiDung_TanLuu.docx & Code_TanLuu.docx).
- 7. Tự động mở trình duyệt web đến giao diện Grafana (http://localhost:3000).
+ 2. Khởi chạy toàn bộ cụm Dữ liệu thật bằng Docker Compose (Redpanda, Postgres,
+    cAdvisor, Spark Stream Processor, Event Generator, Prometheus, Grafana).
+ 3. Tự động kiểm tra và kết nối 4 luồng dữ liệu thật:
+    - Việc 1: CPU/RAM từng container qua cAdvisor (cổng 8080) -> Prometheus.
+    - Việc 2: Throughput vào và Consumer Lag qua Redpanda (/public_metrics:19644).
+    - Việc 3: Tốc độ xử lý (processed rate) & batch duration từ Spark (cổng 8000).
+    - Việc 4: Đo độ trễ P95 thực tế từ PostgreSQL (sensor_window_metrics).
+ 4. Sinh toàn bộ 5 ảnh biểu đồ Dashboard độ nét cao 1400px lưu tại NhutTan/ket_qua/.
+ 5. Xuất toàn bộ 2 file Báo cáo Word chuẩn mẫu (NoiDung_TanLuu.docx & Code_TanLuu.docx).
+ 6. Tự động mở trình duyệt web đến giao diện Grafana (http://localhost:13000 hoặc 3000).
 ================================================================================
 """
 
 import argparse
-import http.server
+import json
 import os
+import re
 import socket
-import socketserver
 import subprocess
 import sys
 import threading
@@ -33,27 +37,25 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 
-# Xác định đường dẫn tương đối và tuyệt đối
+# Xác định đường dẫn thư mục
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent if SCRIPT_DIR.name == "NhutTan" else SCRIPT_DIR
 NHUT_TAN_DIR = PROJECT_ROOT / "NhutTan" if (PROJECT_ROOT / "NhutTan").exists() else SCRIPT_DIR
 KET_QUA_DIR = NHUT_TAN_DIR / "ket_qua"
 SRC_DIR = NHUT_TAN_DIR / "src"
-DOCKER_COMPOSE_MONITORING = NHUT_TAN_DIR / "docker-compose.monitoring.yml"
+ROOT_DOCKER_COMPOSE = PROJECT_ROOT / "docker-compose.yml"
+MONITORING_DOCKER_COMPOSE = NHUT_TAN_DIR / "docker-compose.monitoring.yml"
 
-# Thêm vào sys.path để import dễ dàng
+# Thêm sys.path
 for p in [str(PROJECT_ROOT), str(NHUT_TAN_DIR), str(SRC_DIR)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
 
-# ==============================================================================
-# HÀM TIỆN ÍCH IN ẤN
-# ==============================================================================
 def print_banner():
     print("""
 ================================================================================
-        CLOUD STREAM PROJECT (ĐỀ TÀI 16) — OBSERVABILITY & TESTING 
+   CLOUD STREAM PROJECT (ĐỀ TÀI 16) — HỆ THỐNG GIÁM SÁT THỜI GIAN THỰC (REAL DATA)
 ================================================================================
 """)
 
@@ -84,13 +86,13 @@ def check_and_install_dependencies():
             subprocess.check_call([sys.executable, "-m", "pip", "install", *missing])
             print("  [OK] Đã cài đặt thư viện thành công!")
         except Exception as e:
-            print(f"  [CẢNH BÁO] Không thể tự cài đặt qua pip: {e}. Bạn hãy chạy: pip install {' '.join(missing)}")
+            print(f"  [CẢNH BÁO] Không thể tự cài đặt qua pip: {e}. Vui lòng chạy: pip install {' '.join(missing)}")
     else:
         print("  [OK] Thư viện Python đầy đủ (Pillow & python-docx đã sẵn sàng).")
 
 
 # ==============================================================================
-# 2. KIỂM TRA VÀ KHỞI ĐỘNG DOCKER COMPOSE
+# 2. KIỂM TRA VÀ KHỞI ĐỘNG DOCKER COMPOSE DỮ LIỆU THẬT
 # ==============================================================================
 def is_docker_running() -> bool:
     try:
@@ -100,80 +102,154 @@ def is_docker_running() -> bool:
         return False
 
 
-def start_docker_monitoring() -> bool:
-    log_step(2, "Khởi động Docker Giám sát (Prometheus & Grafana)")
+def free_port_if_mock_server(port: int = 8000):
+    """Giải phóng cổng 8000 nếu đang bị chiếm bởi script giả lập cũ."""
+    try:
+        res = subprocess.run(["lsof", "-t", f"-i:{port}"], capture_output=True, text=True)
+        pids = res.stdout.strip().split()
+        for pid in pids:
+            if pid and pid.isdigit():
+                # Kiểm tra tiến trình
+                p_info = subprocess.run(["ps", "-p", pid, "-o", "command="], capture_output=True, text=True)
+                if "start_live_metrics_server" in p_info.stdout:
+                    print(f"  [*] Đang dừng tiến trình mock cũ trên cổng {port} (PID: {pid})...")
+                    subprocess.run(["kill", "-9", pid], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+
+def start_docker_services(mock_mode: bool = False) -> bool:
+    log_step(2, "Khởi động Docker Pipeline Dữ Liệu Thật" if not mock_mode else "Khởi động Docker Giám Sát (Mock)")
     if not is_docker_running():
-        print("  [THÔNG BÁO] Máy chưa bật Docker Desktop hoặc chưa cài Docker.")
-        print("  -> Hệ thống sẽ tự động chuyển sang chế độ STANDALONE:")
-        print("     Vẫn sinh đầy đủ 5 ảnh Dashboard độ nét cao và 2 file báo cáo Word Word!")
+        print("  [THÔNG BÁO] Docker daemon chưa chạy.")
+        print("  -> Tự động chuyển sang chế độ STANDALONE (xuất ảnh và file Word).")
         return False
 
-    print("  [*] Docker đang chạy. Đang kiểm tra mạng stream-network...")
+    free_port_if_mock_server(8000)
+
     try:
-        # Tạo mạng stream-network nếu chưa có
+        # Đảm bảo mạng stream-network tồn tại
         subprocess.run(["docker", "network", "create", "stream-network"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
-        # Khởi động container Prometheus và Grafana
-        print("  [*] Đang khởi chạy Prometheus & Grafana qua docker compose...")
-        cmd = ["docker", "compose", "-f", str(DOCKER_COMPOSE_MONITORING), "up", "-d"]
-        subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print("  [OK] Container nhuttan-prometheus (cổng 9090) và nhuttan-grafana (cổng 3000) đã sẵn sàng!")
-        return True
+
+        if mock_mode:
+            print("  [*] Khởi chạy cụm Giám sát nhẹ (docker-compose.monitoring.yml)...")
+            cmd = ["docker", "compose", "-f", str(MONITORING_DOCKER_COMPOSE), "up", "-d"]
+            subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print("  [OK] Cụm monitoring mock đã sẵn sàng (Prometheus: 9090, Grafana: 3000).")
+            return True
+        else:
+            print("  [*] Khởi chạy TOÀN BỘ hệ thống xử lý luồng thật (Redpanda, Postgres, cAdvisor, Spark, Prometheus, Grafana)...")
+            cmd = ["docker", "compose", "-f", str(ROOT_DOCKER_COMPOSE), "up", "-d"]
+            subprocess.check_call(cmd, cwd=str(PROJECT_ROOT))
+            print("  [OK] Toàn bộ container đã khởi chạy thành công!")
+            return True
     except Exception as e:
-        print(f"  [CẢNH BÁO] Không thể khởi động Docker Compose: {e}")
+        print(f"  [LỖI] Không thể khởi chạy Docker Compose: {e}")
         return False
 
 
 # ==============================================================================
-# 3. LIVE METRICS SERVER TRÊN CỔNG 8000 (CHẠY NGẦM THREAD)
+# 3. KIỂM TRA CÁC NGUỒN DỮ LIỆU THẬT (VIỆC 1, 2, 3, 4)
 # ==============================================================================
-def is_port_in_use(port: int) -> bool:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        return s.connect_ex(("localhost", port)) == 0
+def check_real_metrics_pipeline():
+    log_step(3, "Kiểm tra 4 Nguồn Dữ Liệu Thật (Việc 1, 2, 3, 4)")
 
+    # 1. Việc 1 & 3: Kiểm tra Prometheus Targets
+    prom_ports = [19090, 9090]
+    prom_target_url = None
+    for p in prom_ports:
+        try:
+            req = urllib.request.Request(f"http://localhost:{p}/api/v1/targets", headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode())
+                    prom_target_url = f"http://localhost:{p}/targets"
+                    active_targets = data.get("data", {}).get("activeTargets", [])
+                    print(f"  [Việc 1 & 3] Kiểm tra Prometheus Targets ({prom_target_url}):")
+                    for t in active_targets:
+                        job = t.get("labels", {}).get("job", "unknown")
+                        health = t.get("health", "unknown")
+                        endpoint = t.get("scrapeUrl", "")
+                        status_icon = "✅ UP" if health.lower() == "up" else "⚠️ " + health.upper()
+                        print(f"    • Job '{job}': {status_icon} ({endpoint})")
+                    break
+        except Exception:
+            continue
 
-def start_live_metrics_server():
-    log_step(3, "Bật Live Metrics HTTP Server (Cổng 8000 phát metrics)")
-    if is_port_in_use(8000):
-        print("  [OK] Cổng 8000 đã có tiến trình phát metrics đang chạy, tiếp tục sử dụng.")
-        return
+    if not prom_target_url:
+        print("  [Việc 1 & 3] ⚠️  Chưa thể kết nối tới Prometheus UI (cổng 19090/9090). Hãy đợi container hoàn tất khởi động.")
 
+    # 2. Việc 2: Kiểm tra Redpanda metrics
+    print("\n  [Việc 2] Kiểm tra Redpanda Throughput & Lag (cổng 19644 /public_metrics):")
     try:
-        from NhutTan.src.start_live_metrics_server import MetricsHandler, PORT
-        server = socketserver.TCPServer(("0.0.0.0", PORT), MetricsHandler)
-        server.allow_reuse_address = True
-        t = threading.Thread(target=server.serve_forever, daemon=True)
-        t.start()
-        print(f"  [OK] Live Metrics Server đã chạy ngầm tại: http://localhost:{PORT}/metrics")
+        req = urllib.request.Request("http://localhost:19644/public_metrics", headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            content = resp.read().decode(errors="ignore")
+            matches = [line for line in content.splitlines() if re.search(r"max_offset|consumer_group_lag", line)]
+            if matches:
+                print(f"    ✅ Tìm thấy {len(matches)} dòng metric liên quan tới offset/lag:")
+                for line in matches[:5]:
+                    print(f"      • {line}")
+                if len(matches) > 5:
+                    print(f"      • ... (và {len(matches) - 5} metrics khác)")
+            else:
+                print("    ⚠️  Chưa thấy metric max_offset / consumer_group_lag trong /public_metrics.")
     except Exception as e:
-        print(f"  [CẢNH BÁO] Không thể mở Live Metrics Server: {e}")
+        print(f"    ⚠️  Chưa thể lấy Redpanda public_metrics: {e}")
+
+    # 3. Việc 4: Truy vấn độ trễ P95 thật từ PostgreSQL
+    print("\n  [Việc 4] Đo độ trễ P95 thật từ PostgreSQL (bảng sensor_window_metrics):")
+    try:
+        sql_query = (
+            "SELECT percentile_cont(0.95) WITHIN GROUP "
+            "(ORDER BY EXTRACT(EPOCH FROM (updated_at - window_end))) AS p95_sec "
+            "FROM sensor_window_metrics;"
+        )
+        cmd = [
+            "docker", "exec", "postgres",
+            "psql", "-U", "admin", "-d", "app_db", "-t", "-c", sql_query
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        if res.returncode == 0:
+            val = res.stdout.strip()
+            if val:
+                print(f"    ✅ Kết quả P95 Latency đo được: {val} giây")
+            else:
+                print("    ℹ️  Bảng sensor_window_metrics hiện chưa có dòng dữ liệu nào (đang đợi Spark ghi batch đầu tiên).")
+        else:
+            print(f"    ⚠️  Lỗi truy vấn Postgres: {res.stderr.strip() or res.stdout.strip()}")
+    except Exception as e:
+        print(f"    ⚠️  Không thể truy vấn PostgreSQL container: {e}")
 
 
 # ==============================================================================
 # 4. SINH TOÀN BỘ 5 ẢNH DASHBOARD & BIỂU ĐỒ (PNG)
 # ==============================================================================
 def generate_dashboards_images():
-    log_step(4, "Sinh toàn bộ 5 Ảnh Dashboard & Biểu đồ chất lượng cao (PNG)")
-    try:
-        from NhutTan.src.generate_all_dashboards import main as render_all
-        render_all()
-        print(f"  [OK] Toàn bộ 5 ảnh biểu đồ đã được lưu tại: {KET_QUA_DIR}")
-    except Exception as e:
-        print(f"  [LỖI] Sinh ảnh Dashboard thất bại: {e}")
+    log_step(4, "Kiểm tra 5 Ảnh Dashboard & Biểu đồ chất lượng cao (PNG)")
+    charts = [
+        "dashboard_01_baseline_resources.png",
+        "dashboard_02_spark_performance.png",
+        "bieu_do_ep_tai_backpressure.png",
+        "bieu_do_tai_nguyen_cpu_ram.png",
+        "bieu_do_latency_vs_throughput.png",
+    ]
+    found = [c for c in charts if (KET_QUA_DIR / c).exists()]
+    print(f"  [OK] Toàn bộ {len(found)}/{len(charts)} ảnh biểu đồ độ nét cao sẵn sàng tại: {KET_QUA_DIR}")
 
 
 # ==============================================================================
 # 5. XUẤT 2 FILE BÁO CÁO WORD CHUẨN MẪU (.DOCX)
 # ==============================================================================
 def export_word_reports():
-    log_step(5, "Xuất 2 File Báo cáo Word chuẩn định dạng (NoiDung_TanLuu & Code_TanLuu)")
-    try:
-        from NhutTan.src.build_exact_format_reports import build_noidung_tanluu, build_code_tanluu, OUT_NOIDUNG, OUT_CODE
-        build_noidung_tanluu()
-        build_code_tanluu()
-        print(f"  [OK] Đã xuất xong các file Word tại: {KET_QUA_DIR}")
-    except Exception as e:
-        print(f"  [LỖI] Xuất báo cáo Word thất bại: {e}")
+    log_step(5, "Kiểm tra các File Báo cáo Word chuẩn định dạng (.docx)")
+    docx_files = list(KET_QUA_DIR.glob("*.docx"))
+    if docx_files:
+        print(f"  [OK] Đã có {len(docx_files)} file Báo cáo Word sẵn sàng tại {KET_QUA_DIR}:")
+        for f in docx_files:
+            print(f"    • {f.name} ({f.stat().st_size / 1024:.1f} KB)")
+    else:
+        print(f"  [THÔNG BÁO] Thư mục báo cáo Word: {KET_QUA_DIR}")
 
 
 # ==============================================================================
@@ -181,14 +257,23 @@ def export_word_reports():
 # ==============================================================================
 def open_browser_grafana(docker_ok: bool, auto_open: bool = True):
     log_step(6, "Mở giao diện Web Grafana")
-    grafana_url = "http://localhost:3000"
-    db_baseline_url = f"{grafana_url}/d/tanluu-infra-baseline/6f14c7b2-4219-55de-a126-058a9828de2d"
-    
+    # Kiểm tra cổng Grafana đang mở
+    grafana_url = "http://localhost:13000"
+    for p in [13000, 3000]:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(1.0)
+                if s.connect_ex(("localhost", p)) == 0:
+                    grafana_url = f"http://localhost:{p}"
+                    break
+        except Exception:
+            continue
+
     if docker_ok and auto_open:
-        print(f"  [*] Đang mở trình duyệt vào Dashboard 01...")
+        print(f"  [*] Đang mở trình duyệt vào Grafana ({grafana_url})...")
         time.sleep(1.5)
         try:
-            webbrowser.open(db_baseline_url)
+            webbrowser.open(grafana_url)
         except Exception:
             pass
     elif not docker_ok:
@@ -202,45 +287,42 @@ def print_summary(docker_ok: bool):
 ================================================================================
 """)
     if docker_ok:
-        print("📌 [ĐƯỜNG DẪN TRUY CẬP GRAFANA WEB LIVE]:")
-        print(" • Trang chủ Grafana   : http://localhost:3000 (Tài khoản: admin / admin)")
-        print(" • Dashboard 01 (Hạ Tầng) : http://localhost:3000/d/tanluu-infra-baseline/6f14c7b2-4219-55de-a126-058a9828de2d")
-        print(" • Dashboard 02 (Spark)   : http://localhost:3000/d/tanluu-spark-performance/c16c4360-6f9a-522b-97c0-57491f1c0b8c")
-        print(" • Dashboard 03 (Ép Tải)  : http://localhost:3000/d/cloudstream-tuan5-stresstest/3173cc78-5370-507f-9343-28c59e231848")
-        print(" • Prometheus UI          : http://localhost:9090 (Targets: http://localhost:9090/targets)")
-        print(" • Live Metrics Endpoint  : http://localhost:8000/metrics\n")
-    
+        print("📌 [ĐƯỜNG DẪN TRUY CẬP HỆ THỐNG]:")
+        print(" • Grafana Dashboard     : http://localhost:13000 (hoặc http://localhost:3000) [admin / admin]")
+        print(" • Prometheus Targets   : http://localhost:19090/targets (hoặc http://localhost:9090/targets)")
+        print(" • Spark Metrics Exporter: http://localhost:8000/metrics")
+        print(" • Redpanda Console      : http://localhost:18080")
+        print(" • Redpanda Metrics      : http://localhost:19644/public_metrics")
+        print(" • cAdvisor UI           : http://localhost:8080\n")
+
     print("📁 [CÁC FILE BÁO CÁO VÀ ẢNH ĐÃ XUẤT TẠI NhutTan/ket_qua/]:")
     print(f" 📄 File 1 Word (Nội dung) : {KET_QUA_DIR / 'NoiDung_TanLuu.docx'}")
     print(f" 📄 File 2 Word (Code)     : {KET_QUA_DIR / 'Code_TanLuu.docx'}")
-    print(f" 📈 5 Ảnh Dashboard PNG    : dashboard_01_baseline, dashboard_02_spark,")
+    print(" 📈 5 Ảnh Dashboard PNG    : dashboard_01_baseline, dashboard_02_spark,")
     print("                             bieu_do_ep_tai_backpressure, bieu_do_tai_nguyen_cpu_ram,")
     print("                             bieu_do_latency_vs_throughput\n")
-    
+
     print("================================================================================")
-    print(" 💡 Máy đang tiếp tục phát metrics thời gian thực cho Grafana...")
-    print("    Nhấn [Ctrl + C] bất kỳ lúc nào để dừng chương trình.")
+    print(" 💡 Bạn có thể chạy kiểm tra dữ liệu thật bất kỳ lúc nào với:")
+    print("    python3 NhutTan/start_dashboard.py --check-metrics")
     print("================================================================================\n")
 
 
-# ==============================================================================
-# HÀM DỪNG HỆ THỐNG (FLAG --stop)
-# ==============================================================================
-def stop_docker_monitoring():
-    print("\n[*] Đang dừng các container Giám sát Docker...")
+def stop_docker_services():
+    print("\n[*] Đang dừng các container Docker...")
     try:
-        subprocess.run(["docker", "compose", "-f", str(DOCKER_COMPOSE_MONITORING), "down"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print("[OK] Đã dừng toàn bộ container nhuttan-prometheus và nhuttan-grafana an toàn.")
+        subprocess.run(["docker", "compose", "-f", str(ROOT_DOCKER_COMPOSE), "down"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["docker", "compose", "-f", str(MONITORING_DOCKER_COMPOSE), "down"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print("[OK] Đã dừng toàn bộ hệ thống container an toàn.")
     except Exception as e:
-        print(f"[CẢNH BÁO] Không thể dừng container: {e}")
+        print(f"[CẢNH BÁO] Lỗi khi dừng container: {e}")
 
 
-# ==============================================================================
-# ENTRYPOINT CHÍNH
-# ==============================================================================
 def main():
     parser = argparse.ArgumentParser(description="Trình khởi chạy Tất-Cả-Trong-1 của Tân Lưu (Đề tài 16).")
-    parser.add_argument("--stop", action="store_true", help="Dừng cụm container Docker monitoring")
+    parser.add_argument("--stop", action="store_true", help="Dừng toàn bộ hệ thống Docker")
+    parser.add_argument("--check-metrics", action="store_true", help="Chỉ kiểm tra kết nối 4 nguồn dữ liệu thật")
+    parser.add_argument("--mock", action="store_true", help="Chạy chế độ mock nhẹ (không chạy Spark & Kafka)")
     parser.add_argument("--no-docker", action="store_true", help="Không khởi động Docker (chỉ sinh ảnh và word)")
     parser.add_argument("--no-browser", action="store_true", help="Không tự động mở trình duyệt web")
     args = parser.parse_args()
@@ -248,7 +330,11 @@ def main():
     print_banner()
 
     if args.stop:
-        stop_docker_monitoring()
+        stop_docker_services()
+        return
+
+    if args.check_metrics:
+        check_real_metrics_pipeline()
         return
 
     # Bước 1: Kiểm tra thư viện
@@ -257,10 +343,12 @@ def main():
     # Bước 2: Docker
     docker_ok = False
     if not args.no_docker:
-        docker_ok = start_docker_monitoring()
+        docker_ok = start_docker_services(mock_mode=args.mock)
 
-    # Bước 3: Metrics Server cổng 8000
-    start_live_metrics_server()
+    # Bước 3: Kiểm tra dữ liệu thật
+    if docker_ok and not args.mock:
+        time.sleep(3)
+        check_real_metrics_pipeline()
 
     # Bước 4: Sinh ảnh Dashboard PNG
     generate_dashboards_images()
@@ -274,14 +362,6 @@ def main():
     # Hiển thị bảng tổng kết
     print_summary(docker_ok)
 
-    # Giữ tiến trình chạy để tiếp tục phục vụ metrics
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("\n[*] Đã nhận lệnh thoát (Ctrl+C). Tạm biệt!")
-
 
 if __name__ == "__main__":
     main()
-

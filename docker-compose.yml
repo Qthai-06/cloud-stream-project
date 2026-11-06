@@ -62,6 +62,9 @@ services:
           cpus: "0.5"
           memory: 256M
 
+  # ==========================================
+  # 2. RDBMS: POSTGRESQL (OLTP)
+  # ==========================================
   postgres:
     image: postgres:16.4-alpine
     container_name: postgres
@@ -82,6 +85,9 @@ services:
       timeout: 5s
       retries: 12
 
+  # ==========================================
+  # 3. EVENT GENERATOR (Tích hợp nội bộ)
+  # ==========================================
   data-generator:
     build:
       context: .
@@ -104,17 +110,22 @@ services:
           cpus: "0.5"
           memory: 256M
 
+  # ==========================================
+  # 4. INFRA METRICS MONITORING (Giám sát phần cứng)
+  # ==========================================
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     container_name: cadvisor
     restart: unless-stopped
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=5s
+      - --disable_metrics=disk,tcp,udp,percpu,sched,process
     ports:
       - "8080:8080"
     volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - /sys:/sys:ro
-      - /var/lib/docker:/var/lib/docker:ro
     networks:
       - stream-network
     deploy:
@@ -161,6 +172,7 @@ services:
     volumes:
       - ./volumes/grafana:/var/lib/grafana
       - ./configs/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./NhutTan/grafana/dashboards_json:/etc/grafana/dashboards:ro
     depends_on:
       prometheus:
         condition: service_healthy
@@ -177,21 +189,31 @@ services:
           cpus: "0.5"
           memory: 512M
 
+  # ==========================================
+  # 5. STREAMING ENGINE (Spark Structured Streaming)
+  # ==========================================
   stream-processor:
     build:
       context: .
       dockerfile: Dockerfile.spark
     container_name: spark-processor
     restart: unless-stopped
+    ports:
+      - "8000:8000"
     environment:
       KAFKA_BOOTSTRAP_SERVERS: redpanda:29092
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_NAME: ${POSTGRES_DB:?POSTGRES_DB is required}
       DB_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
       DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-      CHECKPOINT_LOCATION: /opt/workspace/checkpoints/spark_pipeline
       CHECKPOINT_ROOT: /opt/workspace/checkpoints
+      CHECKPOINT_LOCATION: /opt/workspace/checkpoints/spark_pipeline
     volumes:
       - ./checkpoints:/opt/workspace/checkpoints
       - ./logs:/app/logs
