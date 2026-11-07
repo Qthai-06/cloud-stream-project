@@ -96,10 +96,33 @@ def check_and_install_dependencies():
 # ==============================================================================
 def is_docker_running() -> bool:
     try:
-        res = subprocess.run(["docker", "info"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        res = subprocess.run(["docker", "info"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
         return res.returncode == 0
     except Exception:
         return False
+
+
+def ensure_docker_running() -> bool:
+    """Kiểm tra Docker, nếu chưa chạy trên macOS thì tự động khởi chạy Docker Desktop."""
+    if is_docker_running():
+        return True
+
+    if sys.platform == "darwin":
+        print("  [*] Docker daemon chưa chạy. Đang tự động mở ứng dụng Docker Desktop trên macOS...")
+        try:
+            subprocess.run(["open", "-a", "Docker"], check=False)
+            print("  [*] Đang đợi Docker Desktop sẵn sàng (tối đa 40 giây)...")
+            for i in range(20):
+                time.sleep(2)
+                if is_docker_running():
+                    print(f"  [OK] Docker daemon đã sẵn sàng sau {(i + 1) * 2} giây!")
+                    return True
+        except Exception as e:
+            print(f"  [CẢNH BÁO] Không thể tự động mở Docker Desktop: {e}")
+
+    print("  [CẢNH BÁO] Ứng dụng Docker Desktop chưa bật trên máy.")
+    print("  👉 Vui lòng mở Docker Desktop từ Launchpad/Applications để khởi chạy Grafana container.")
+    return False
 
 
 def free_port_if_mock_server(port: int = 8000):
@@ -120,8 +143,7 @@ def free_port_if_mock_server(port: int = 8000):
 
 def start_docker_services(mock_mode: bool = False) -> bool:
     log_step(2, "Khởi động Docker Pipeline Dữ Liệu Thật" if not mock_mode else "Khởi động Docker Giám Sát (Mock)")
-    if not is_docker_running():
-        print("  [THÔNG BÁO] Docker daemon chưa chạy.")
+    if not ensure_docker_running():
         print("  -> Tự động chuyển sang chế độ STANDALONE (xuất ảnh và file Word).")
         return False
 
@@ -255,45 +277,84 @@ def export_word_reports():
 # ==============================================================================
 # 6. TỰ ĐỘNG MỞ TRÌNH DUYỆT XEM GRAFANA
 # ==============================================================================
-def open_browser_grafana(docker_ok: bool, auto_open: bool = True):
-    log_step(6, "Mở giao diện Web Grafana")
-    # Kiểm tra cổng Grafana đang mở
-    grafana_url = "http://localhost:3000"
-    for p in [3000, 13300, 13000]:
+def get_active_grafana_url() -> str:
+    """Dò quét cổng Grafana đang mở (ưu tiên 13300, 3000, 13000)."""
+    for p in [13300, 3000, 13000]:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(1.0)
+                s.settimeout(0.5)
                 if s.connect_ex(("localhost", p)) == 0:
-                    grafana_url = f"http://localhost:{p}"
-                    break
+                    return f"http://localhost:{p}"
         except Exception:
             continue
+    return "http://localhost:13300"
 
-    if docker_ok and auto_open:
-        print(f"  [*] Đang mở trình duyệt vào Grafana ({grafana_url})...")
-        time.sleep(1.5)
+
+def is_grafana_port_open() -> bool:
+    """Kiểm tra có bất kỳ cổng Grafana nào đang phản hồi kết nối không."""
+    for p in [13300, 3000, 13000]:
         try:
-            webbrowser.open(grafana_url)
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(0.5)
+                if s.connect_ex(("localhost", p)) == 0:
+                    return True
         except Exception:
-            pass
-    elif not docker_ok:
+            continue
+    return False
+
+
+def open_browser_grafana(docker_ok: bool, auto_open: bool = True):
+    log_step(6, "Mở giao diện Web Grafana Dashboards")
+    active_base = get_active_grafana_url()
+    target_url = f"{active_base}/dashboards"
+    port_open = is_grafana_port_open()
+
+    if (docker_ok or port_open) and auto_open:
+        print(f"  [*] Đang mở trình duyệt vào Grafana Dashboards ({target_url})...")
+        time.sleep(1.0)
+        
+        opened = False
+        # 1. Thử qua webbrowser chuẩn của Python
+        try:
+            opened = webbrowser.open(target_url, new=2)
+        except Exception:
+            opened = False
+            
+        # 2. Dự phòng thêm lệnh mở trình duyệt hệ điều hành (macOS / Linux / Windows)
+        if not opened or sys.platform == "darwin":
+            try:
+                if sys.platform == "darwin":
+                    subprocess.run(["open", target_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                elif sys.platform.startswith("linux"):
+                    subprocess.run(["xdg-open", target_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                elif sys.platform == "win32":
+                    os.startfile(target_url)
+            except Exception:
+                pass
+
+        print(f"\n  🌐 [LIÊN KẾT TRUY CẬP]: {target_url}")
+        print("  🔑 Tài khoản đăng nhập : admin / admin (hoặc admin / root)")
+        print("  💡 Nếu trình duyệt chưa tự mở, bạn hãy nhấp vào đường dẫn trên để xem Dashboards!\n")
+    elif not docker_ok and not port_open:
         print("  [*] Chế độ Standalone: Bạn có thể xem ngay các file ảnh PNG tại thư mục NhutTan/ket_qua/.")
+        print(f"  💡 Khi Docker Desktop chạy, truy cập Grafana tại: {target_url} [admin / admin]\n")
 
 
 def print_summary(docker_ok: bool):
-    print("""
+    active_base = get_active_grafana_url()
+    print(f"""
 ================================================================================
                     🎉 HỆ THỐNG ĐÃ SẴN SÀNG HOÀN TOÀN! 🎉
 ================================================================================
+
+📌 [ĐƯỜNG DẪN TRUY CẬP HỆ THỐNG]:
+ • Grafana Dashboards    : {active_base}/dashboards (hoặc http://localhost:13300 / http://localhost:3000) [admin / admin]
+ • Prometheus Targets   : http://localhost:19090/targets (hoặc http://localhost:9090/targets)
+ • Spark Metrics Exporter: http://localhost:8000/metrics
+ • Redpanda Console      : http://localhost:18080
+ • Redpanda Metrics      : http://localhost:19644/public_metrics
+ • cAdvisor UI           : http://localhost:8080
 """)
-    if docker_ok:
-        print("📌 [ĐƯỜNG DẪN TRUY CẬP HỆ THỐNG]:")
-        print(f" • Grafana Dashboard     : {grafana_url} (hoặc http://localhost:3000 / http://localhost:13300) [admin / admin]")
-        print(" • Prometheus Targets   : http://localhost:19090/targets (hoặc http://localhost:9090/targets)")
-        print(" • Spark Metrics Exporter: http://localhost:8000/metrics")
-        print(" • Redpanda Console      : http://localhost:18080")
-        print(" • Redpanda Metrics      : http://localhost:19644/public_metrics")
-        print(" • cAdvisor UI           : http://localhost:8080\n")
 
     print("📁 [CÁC FILE BÁO CÁO VÀ ẢNH ĐÃ XUẤT TẠI NhutTan/ket_qua/]:")
     print(f" 📄 File 1 Word (Nội dung) : {KET_QUA_DIR / 'NoiDung_TanLuu.docx'}")
